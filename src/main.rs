@@ -4,34 +4,43 @@ extern crate rocket;
 #[cfg(test)]
 mod tests;
 
-use rocket::serde::json::Json;
-use rocket::serde::Deserialize;
+use rocket::serde::json::serde_json::json;
+use rocket::serde::json::{Json, Value};
+use rocket::serde::{Deserialize, Serialize};
+use rocket::tokio::sync::Mutex;
 use rocket::State;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
-struct HitCount(AtomicUsize);
-
-#[derive(Deserialize)]
-struct Product<'r> {
-    name: &'r str,
+#[derive(Serialize, Deserialize, Clone)]
+struct Product {
+    id: Option<usize>,
+    name: String,
     price: u32,
 }
 
-#[post("/", data = "<product>")]
-fn create_product(product: Json<Product<'_>>) {
-    println!("product name={} price={}", product.name, product.price)
+type ProductList = Mutex<Vec<Product>>;
+
+#[get("/", format = "json")]
+async fn get_products<'a>(product_list: &State<ProductList>) -> Option<Json<Vec<Product>>> {
+    let lock = product_list.lock().await;
+    Some(Json(lock.to_vec()))
 }
 
-#[get("/")]
-fn count(hit_count: &State<HitCount>) -> String {
-    let count = hit_count.0.fetch_add(1, Ordering::Relaxed) + 1;
-    format!("Number of visits {}", count)
+#[post("/", data = "<product>")]
+async fn new_product(product: Json<Product>, product_list: &State<ProductList>) -> Value {
+    let mut lock = product_list.lock().await;
+    let id = lock.len();
+
+    lock.push(Product {
+        id: Some(id),
+        ..product.0
+    });
+
+    json!({ "id": id })
 }
 
 #[launch]
 fn rocket() -> _ {
     rocket::build()
-        .mount("/products", routes![create_product])
-        .mount("/count", routes![count])
-        .manage(HitCount(AtomicUsize::new(0)))
+        .mount("/products", routes![get_products, new_product])
+        .manage(ProductList::new(vec![]))
 }
