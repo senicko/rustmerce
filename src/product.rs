@@ -7,16 +7,16 @@ use rocket::{routes, State};
 use uuid::Uuid;
 
 #[derive(Serialize, Deserialize, Clone)]
-struct Product {
-    id: Option<String>,
-    name: String,
-    price: u32,
+pub struct Product {
+    pub id: Option<String>,
+    pub name: String,
+    pub price: u32,
 }
 
-type ProductList = Mutex<Vec<Product>>;
+pub type ProductList = Mutex<Vec<Product>>;
 
 #[get("/")]
-async fn get_products<'a>(product_list: &State<ProductList>) -> Option<Json<Vec<Product>>> {
+async fn get_products(product_list: &State<ProductList>) -> Option<Json<Vec<Product>>> {
     let lock = product_list.lock().await;
     Some(Json(lock.to_vec()))
 }
