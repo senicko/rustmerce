@@ -7,7 +7,8 @@ mod product;
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let product_list = Data::new(Mutex::new(vec![Product {
-        name: String::from("Basket"),
+        id: "1".to_string(),
+        name: "Basket".to_string(),
         price: 25.0,
     }]));
 

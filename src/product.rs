@@ -5,6 +5,13 @@ use std::sync::Mutex;
 
 #[derive(Serialize, Deserialize)]
 pub struct Product {
+    pub id: String,
+    pub name: String,
+    pub price: f32,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ProductInsertable {
     pub name: String,
     pub price: f32,
 }
@@ -12,10 +19,8 @@ pub struct Product {
 pub type ProductList = Mutex<Vec<Product>>;
 
 #[get("")]
-async fn list_products(product_list: web::Data<ProductList>) -> impl Responder {
+async fn list_products(product_list: web::Data<ProductList>) -> HttpResponse {
     let lock = product_list.lock().unwrap();
-
-    // TODO: Learn about rust's Mutex (Idk if this is the correct way of doing that)
     let body = serde_json::to_string(lock.deref()).unwrap();
 
     HttpResponse::Ok()
@@ -24,8 +29,20 @@ async fn list_products(product_list: web::Data<ProductList>) -> impl Responder {
 }
 
 #[get("/{id}")]
-async fn get_product(id: web::Path<String>) -> String {
-    format!("Getting a product by its id (id={id})")
+async fn get_product(id: web::Path<String>, product_list: web::Data<ProductList>) -> HttpResponse {
+    let lock = product_list.lock().unwrap();
+    let product = lock.iter().find(|&p| p.id == "1");
+
+    match product {
+        Some(p) => {
+            let body = serde_json::to_string(p).unwrap();
+
+            HttpResponse::Ok()
+                .content_type(ContentType::json())
+                .body(body)
+        }
+        None => HttpResponse::NotFound().finish(),
+    }
 }
 
 #[post("")]
