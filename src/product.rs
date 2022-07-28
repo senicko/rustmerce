@@ -1,19 +1,21 @@
-use actix_web::{delete, get, http::header::ContentType, post, web, HttpResponse, Responder};
+use actix_web::{delete, get, http::header::ContentType, post, web, HttpResponse};
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 use std::sync::Mutex;
+use tokio_pg_mapper_derive::PostgresMapper;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, PostgresMapper)]
+#[pg_mapper(table = "products")]
 pub struct Product {
-    pub id: String,
+    pub id: i32,
     pub name: String,
-    pub price: f32,
+    pub price: f64,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct ProductInsertable {
     pub name: String,
-    pub price: f32,
+    pub price: f64,
 }
 
 pub type ProductList = Mutex<Vec<Product>>;
@@ -31,7 +33,7 @@ async fn list_products(product_list: web::Data<ProductList>) -> HttpResponse {
 #[get("/{id}")]
 async fn get_product(id: web::Path<String>, product_list: web::Data<ProductList>) -> HttpResponse {
     let lock = product_list.lock().unwrap();
-    let product = lock.iter().find(|&p| p.id == "1");
+    let product = lock.iter().find(|&p| p.id == 1);
 
     match product {
         Some(p) => {

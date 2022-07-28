@@ -2,6 +2,7 @@ use actix_web::{get, http::header::ContentType, web, App, HttpResponse, HttpServ
 use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime};
 use product::Product;
 use std::sync::Mutex;
+use tokio_pg_mapper::FromTokioPostgresRow;
 use tokio_postgres::NoTls;
 
 mod product;
@@ -25,17 +26,15 @@ fn initialize_db_pool() -> Pool {
 #[get("/test")]
 async fn db_test(db_pool: web::Data<Pool>) -> HttpResponse {
     let conn = db_pool.get().await.unwrap();
-
     let stmt = conn.prepare_cached("SELECT * FROM products").await.unwrap();
     let rows = conn.query(&stmt, &[]).await.unwrap();
 
-    let id: i32 = rows[0].get(0);
-    let name: &str = rows[0].get(1);
-    let price: f64 = rows[0].get(2);
+    let product = Product::from_row_ref(&rows[0]).unwrap();
+    let body = serde_json::to_string(&product).unwrap();
 
     HttpResponse::Ok()
-        .content_type(ContentType::plaintext())
-        .body(format!("{} {} {}", id, name, price))
+        .content_type(ContentType::json())
+        .body(body)
 }
 
 #[actix_web::main]
@@ -43,7 +42,7 @@ async fn main() -> std::io::Result<()> {
     let db_pool = web::Data::new(initialize_db_pool());
 
     let product_list = web::Data::new(Mutex::new(vec![Product {
-        id: "1".to_string(),
+        id: 1,
         name: "Basket".to_string(),
         price: 25.0,
     }]));
