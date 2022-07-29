@@ -9,7 +9,7 @@ mod product;
 
 fn init_db_pool() -> Pool {
     let db_username = env::var("DB_USERNAME").expect("DB_USERNAME isn't set");
-    let db_url = env::var("DB_URL").expect("DB_URL isn't set");
+    let db_url = env::var("DB_NAME").expect("DB_NAME isn't set");
 
     let mut config = Config::new();
     config.user = Some(db_username);
