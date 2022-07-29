@@ -28,15 +28,7 @@ async fn list_products(db_pool: web::Data<Pool>) -> Result<HttpResponse, AppErro
 
     let products = rows
         .iter()
-        .map(|r| {
-            // TODO: Try to simplify this later
-            let product = Product::from_row_ref(r);
-
-            match product {
-                Ok(p) => Ok(p),
-                Err(e) => Err(AppError::from(e)),
-            }
-        })
+        .map(|r| Ok(Product::from_row_ref(r)?))
         .collect::<Result<Vec<Product>, AppError>>()?;
 
     let body = serde_json::to_string(&products).unwrap();
