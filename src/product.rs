@@ -1,9 +1,13 @@
 use crate::error::AppError;
+use actix_multipart::Multipart;
 use actix_web::{delete, get, post, web, HttpResponse};
 use deadpool_postgres::Pool;
+use futures_util::TryStreamExt;
 use serde::{Deserialize, Serialize};
+use std::io::Write;
 use tokio_pg_mapper::FromTokioPostgresRow;
 use tokio_pg_mapper_derive::PostgresMapper;
+use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize, PostgresMapper)]
 #[pg_mapper(table = "products")]
@@ -97,12 +101,49 @@ async fn delete_product(
 
     Ok(HttpResponse::Ok().finish())
 }
+
+#[post("/{id}/assets")]
+async fn add_product_assets(
+    id: web::Path<i32>,
+    mut payload: Multipart,
+    pool: web::Data<Pool>,
+) -> Result<HttpResponse, AppError> {
+    // TODO: Craete guard or sth that checks if the product exists
+    let conn = pool.get().await?;
+
+    while let Some(mut field) = payload.try_next().await? {
+        // Handle file upload
+        let content_disposition = field.content_disposition();
+
+        let filename = content_disposition
+            .get_filename()
+            .map_or_else(|| Uuid::new_v4().to_string(), sanitize_filename::sanitize);
+        let file_path = format!("./assets/{filename}");
+
+        let mut f = web::block(|| std::fs::File::create(file_path)).await??;
+        while let Some(chunk) = field.try_next().await? {
+            f = web::block(move || f.write_all(&chunk).map(|_| f)).await??;
+        }
+
+        // Insert asset into database
+        let stmt = conn
+            .prepare_cached("INSERT INTO assets (url, product_id) VALUES ($1, $2)")
+            .await?;
+
+        conn.execute(&stmt, &[&"this_will_be_url".to_string(), &id as &i32])
+            .await?;
+    }
+
+    Ok(HttpResponse::Created().finish())
+}
+
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/products")
             .service(list_products)
             .service(get_product)
             .service(create_product)
-            .service(delete_product),
+            .service(delete_product)
+            .service(add_product_assets),
     );
 }

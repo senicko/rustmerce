@@ -27,6 +27,8 @@ fn init_db_pool() -> Pool {
 async fn main() -> std::io::Result<()> {
     dotenv().ok();
 
+    std::fs::create_dir_all("./tmp").expect("Failed to create ./tmp");
+
     env::set_var("RUST_LOG", "debug");
     env::set_var("RUST_BACKTRACE", "1");
     env_logger::init();
