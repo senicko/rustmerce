@@ -1,4 +1,7 @@
-use crate::error::AppError;
+use crate::{
+    error::AppError,
+    product::repo::{Repo, RepoImpl},
+};
 use actix_multipart::Multipart;
 use actix_web::{delete, get, post, web, HttpResponse};
 use deadpool_postgres::Pool;
@@ -8,6 +11,8 @@ use std::io::Write;
 use tokio_pg_mapper::FromTokioPostgresRow;
 use tokio_pg_mapper_derive::PostgresMapper;
 use uuid::Uuid;
+
+pub mod repo;
 
 #[derive(Debug, Serialize, Deserialize, PostgresMapper)]
 #[pg_mapper(table = "products")]
@@ -24,17 +29,8 @@ pub struct ProductInsertable {
 }
 
 #[get("")]
-async fn list_products(db_pool: web::Data<Pool>) -> Result<HttpResponse, AppError> {
-    let conn = db_pool.get().await?;
-
-    let stmt = conn.prepare_cached("SELECT * FROM products").await?;
-    let rows = conn.query(&stmt, &[]).await?;
-
-    let products = rows
-        .iter()
-        .map(|r| Ok(Product::from_row_ref(r)?))
-        .collect::<Result<Vec<Product>, AppError>>()?;
-
+async fn list_products(product_repo: web::Data<RepoImpl>) -> Result<HttpResponse, AppError> {
+    let products = product_repo.get_all().await?;
     Ok(HttpResponse::Ok().json(products))
 }
 

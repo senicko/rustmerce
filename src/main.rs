@@ -23,24 +23,29 @@ fn init_db_pool() -> Pool {
         .expect("failed to initialize pool")
 }
 
-#[actix_web::main]
-async fn main() -> std::io::Result<()> {
-    dotenv().ok();
-
-    std::fs::create_dir_all("./tmp").expect("Failed to create ./tmp");
-
+fn init_logger() {
     env::set_var("RUST_LOG", "debug");
     env::set_var("RUST_BACKTRACE", "1");
     env_logger::init();
+}
 
-    let db_pool = web::Data::new(init_db_pool());
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    dotenv().ok();
+    init_logger();
+
+    std::fs::create_dir_all("./tmp").expect("Failed to create ./tmp");
+
+    let db_pool = init_db_pool();
+    let product_repo = product::repo::RepoImpl::new(db_pool.clone());
 
     HttpServer::new(move || {
         let logger = Logger::default();
 
         App::new()
             .wrap(logger)
-            .app_data(db_pool.clone())
+            .app_data(web::Data::new(db_pool.clone()))
+            .app_data(web::Data::new(product_repo.clone()))
             .configure(product::config)
     })
     .bind(("127.0.0.1", 8080))?
