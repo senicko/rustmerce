@@ -7,8 +7,8 @@ use actix_web::{delete, get, post, web, HttpResponse};
 use deadpool_postgres::Pool;
 use futures_util::TryStreamExt;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::io::Write;
-use tokio_pg_mapper::FromTokioPostgresRow;
 use tokio_pg_mapper_derive::PostgresMapper;
 use uuid::Uuid;
 
@@ -37,63 +37,34 @@ async fn list_products(product_repo: web::Data<RepoImpl>) -> Result<HttpResponse
 #[get("/{id}")]
 async fn get_product(
     id: web::Path<i32>,
-    db_pool: web::Data<Pool>,
+    product_repo: web::Data<RepoImpl>,
 ) -> Result<HttpResponse, AppError> {
-    let conn = db_pool.get().await?;
+    let product = product_repo.get_by_id(id.into_inner()).await?;
 
-    let stmt = conn
-        .prepare_cached("SELECT * FROM products WHERE id = $1")
-        .await?;
-    let row = conn.query_opt(&stmt, &[&id as &i32]).await?;
-
-    match row {
-        Some(r) => {
-            let product = Product::from_row(r)?;
-
-            Ok(HttpResponse::Ok().json(product))
-        }
-        // TODO: Is Not Found really an error in this situation? It is more like a normal response.
-        // Maybe this can be abstracted in a better way because currently logger prints it like an error :/.
-        None => Err(AppError {
-            cause: None,
-            message: Some("Product not found".to_string()),
-            error_type: crate::error::AppErrorType::NotFound,
-        }),
+    match product {
+        Some(p) => Ok(HttpResponse::Ok().json(p)),
+        None => Ok(HttpResponse::NotFound().json(json!({
+            "message": "Product not found"
+        }))),
     }
 }
 
 #[post("")]
 async fn create_product(
-    product: web::Json<ProductInsertable>,
-    db_pool: web::Data<Pool>,
+    data: web::Json<ProductInsertable>,
+    product_repo: web::Data<RepoImpl>,
 ) -> Result<HttpResponse, AppError> {
-    let conn = db_pool.get().await?;
+    let created = product_repo.insert(data.into_inner()).await?;
 
-    let stmt = conn
-        .prepare_cached("INSERT INTO products (name, price) VALUES ($1, $2) RETURNING *")
-        .await?;
-    let row = conn
-        .query_one(&stmt, &[&product.name, &product.price])
-        .await?;
-
-    let product = Product::from_row(row)?;
-
-    Ok(HttpResponse::Created().json(product))
+    Ok(HttpResponse::Created().json(created))
 }
 
 #[delete("/{id}")]
 async fn delete_product(
     id: web::Path<i32>,
-    db_pool: web::Data<Pool>,
+    product_repo: web::Data<RepoImpl>,
 ) -> Result<HttpResponse, AppError> {
-    let conn = db_pool.get().await?;
-
-    let stmt = conn
-        .prepare_cached("DELETE FROM products WHERE id = $1")
-        .await?;
-
-    // TODO: Should number of modified rows be checked?
-    conn.execute(&stmt, &[&id as &i32]).await?;
+    product_repo.delete_by_id(id.into_inner()).await?;
 
     Ok(HttpResponse::Ok().finish())
 }
