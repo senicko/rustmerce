@@ -1,24 +1,18 @@
 use super::ProductInsertable;
 use crate::{error::AppError, product::Product};
+use async_trait::async_trait;
 use deadpool_postgres::Pool;
-use std::future::Future;
-use std::pin::Pin;
 use tokio_pg_mapper::FromTokioPostgresRow;
 
+#[async_trait]
 pub trait Repo {
-    fn get_all(&self) -> Pin<Box<dyn Future<Output = Result<Vec<Product>, AppError>> + '_>>;
+    async fn get_all(&self) -> Result<Vec<Product>, AppError>;
 
-    fn get_by_id(
-        &self,
-        id: i32,
-    ) -> Pin<Box<dyn Future<Output = Result<Option<Product>, AppError>> + '_>>;
+    async fn get_by_id(&self, id: i32) -> Result<Option<Product>, AppError>;
 
-    fn insert(
-        &self,
-        data: ProductInsertable,
-    ) -> Pin<Box<dyn Future<Output = Result<Product, AppError>> + '_>>;
+    async fn insert(&self, data: ProductInsertable) -> Result<Product, AppError>;
 
-    fn delete_by_id(&self, id: i32) -> Pin<Box<dyn Future<Output = Result<(), AppError>> + '_>>;
+    async fn delete_by_id(&self, id: i32) -> Result<(), AppError>;
 }
 
 #[derive(Clone)]
@@ -32,70 +26,57 @@ impl RepoImpl {
     }
 }
 
+#[async_trait]
 impl Repo for RepoImpl {
-    fn get_all(&self) -> Pin<Box<dyn Future<Output = Result<Vec<Product>, AppError>> + '_>> {
-        Box::pin(async {
-            let conn = &self.db_pool.get().await?;
+    async fn get_all(&self) -> Result<Vec<Product>, AppError> {
+        let conn = &self.db_pool.get().await?;
 
-            let stmt = conn.prepare_cached("SELECT * FROM products").await?;
-            let rows = conn.query(&stmt, &[]).await?;
+        let stmt = conn.prepare_cached("SELECT * FROM products").await?;
+        let rows = conn.query(&stmt, &[]).await?;
 
-            rows.iter()
-                .map(|r| Ok(Product::from_row_ref(r)?))
-                .collect::<Result<Vec<Product>, AppError>>()
-        })
+        rows.iter()
+            .map(|r| Ok(Product::from_row_ref(r)?))
+            .collect::<Result<Vec<Product>, AppError>>()
     }
 
-    fn get_by_id(
-        &self,
-        id: i32,
-    ) -> Pin<Box<dyn Future<Output = Result<Option<Product>, AppError>> + '_>> {
-        Box::pin(async move {
-            let conn = &self.db_pool.get().await?;
+    async fn get_by_id(&self, id: i32) -> Result<Option<Product>, AppError> {
+        let conn = &self.db_pool.get().await?;
 
-            let stmt = conn
-                .prepare_cached("SELECT * FROM products WHERE id = $1")
-                .await?;
+        let stmt = conn
+            .prepare_cached("SELECT * FROM products WHERE id = $1")
+            .await?;
 
-            let row = conn.query_opt(&stmt, &[&id]).await?;
+        let row = conn.query_opt(&stmt, &[&id]).await?;
 
-            match row {
-                Some(r) => Ok(Some(Product::from_row(r)?)),
-                None => Ok(None),
-            }
-        })
+        match row {
+            Some(r) => Ok(Some(Product::from_row(r)?)),
+            None => Ok(None),
+        }
     }
 
-    fn insert(
-        &self,
-        product: ProductInsertable,
-    ) -> Pin<Box<dyn Future<Output = Result<Product, AppError>> + '_>> {
-        Box::pin(async move {
-            let conn = &self.db_pool.get().await?;
+    async fn insert(&self, product: ProductInsertable) -> Result<Product, AppError> {
+        let conn = &self.db_pool.get().await?;
 
-            let stmt = conn
-                .prepare_cached("INSERT INTO products (name, price) VALUES ($1, $2) RETURNING *")
-                .await?;
+        let stmt = conn
+            .prepare_cached("INSERT INTO products (name, price) VALUES ($1, $2) RETURNING *")
+            .await?;
 
-            let row = conn
-                .query_one(&stmt, &[&product.name, &product.price])
-                .await?;
+        let row = conn
+            .query_one(&stmt, &[&product.name, &product.price])
+            .await?;
 
-            Ok(Product::from_row(row)?)
-        })
+        Ok(Product::from_row(row)?)
     }
 
-    fn delete_by_id(&self, id: i32) -> Pin<Box<dyn Future<Output = Result<(), AppError>> + '_>> {
-        Box::pin(async move {
-            let conn = &self.db_pool.get().await?;
+    async fn delete_by_id(&self, id: i32) -> Result<(), AppError> {
+        let conn = &self.db_pool.get().await?;
 
-            let stmt = conn
-                .prepare_cached("DELETE FROM products WHERE id = $1")
-                .await?;
+        let stmt = conn
+            .prepare_cached("DELETE FROM products WHERE id = $1")
+            .await?;
 
-            conn.execute(&stmt, &[&id]).await?;
+        conn.execute(&stmt, &[&id]).await?;
 
-            Ok(())
-        })
+        Ok(())
     }
 }
