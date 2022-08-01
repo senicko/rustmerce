@@ -14,7 +14,7 @@ pub trait Repo {
 
     async fn delete_by_id(&self, id: i32) -> Result<(), AppError>;
 
-    // async fn add_asset(&self, asset_filename: String) -> Result<(), AppError>;
+    async fn add_asset(&self, product_id: i32, asset_filename: &String) -> Result<(), AppError>;
 }
 
 #[derive(Clone)]
@@ -78,6 +78,18 @@ impl Repo for RepoImpl {
             .await?;
 
         conn.execute(&stmt, &[&id]).await?;
+
+        Ok(())
+    }
+
+    async fn add_asset(&self, product_id: i32, asset_filename: &String) -> Result<(), AppError> {
+        let conn = &self.db_pool.get().await?;
+
+        let stmt = conn
+            .prepare_cached("INSERT INTO assets (product_id, filename) VALUES ($1, $2)")
+            .await?;
+
+        conn.execute(&stmt, &[&product_id, &asset_filename]).await?;
 
         Ok(())
     }

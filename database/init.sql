@@ -8,7 +8,7 @@ CREATE TABLE products (
 
 CREATE TABLE assets (
     id SERIAL PRIMARY KEY,
-    url TEXT NOT NULL,
+    filename TEXT NOT NULL,
     product_id INT NOT NULL,
-    CONSTRAINT fk_product FOREIGN KEY (product_id) REFERENCES products(id)
+    CONSTRAINT fk_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 );

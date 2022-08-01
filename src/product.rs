@@ -69,33 +69,35 @@ async fn delete_product(
 
 #[post("/{id}/assets")]
 async fn add_product_assets(
-    // id: web::Path<i32>,
+    id: web::Path<i32>,
     mut payload: Multipart,
+    product_repo: web::Data<RepoImpl>,
     storage_service: web::Data<StorageImpl>,
 ) -> Result<HttpResponse, AppError> {
-    // TODO: Craete guard or sth that checks if the product exists
-    let mut asset_filename: Option<String> = None;
+    // TODO: Create guard or sth that checks if the product exists
+    let mut filename: Option<String> = None;
 
     while let Some(field) = payload.try_next().await? {
         let content_disposition = field.content_disposition();
 
         if Some("image") == content_disposition.get_name() {
-            asset_filename = Some(storage_service.save_image(field).await?);
+            filename = Some(storage_service.save_image(field).await?);
             break;
         }
     }
 
-    if asset_filename == None {
-        return Err(AppError {
+    match filename {
+        Some(filename) => {
+            product_repo.add_asset(id.into_inner(), &filename).await?;
+
+            Ok(HttpResponse::Created().json(json!({ "filename": filename })))
+        }
+        None => Err(AppError {
             cause: Some("image field missing".to_string()),
             message: Some("Invalid request".to_string()),
             error_type: crate::error::AppErrorType::Internal,
-        });
+        }),
     }
-
-    // TODO: connect asset with product
-
-    Ok(HttpResponse::Created().json(json!({ "assetFilename": asset_filename })))
 }
 
 pub fn config(cfg: &mut web::ServiceConfig) {
