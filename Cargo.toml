@@ -7,18 +7,23 @@ edition = "2021"
 
 [dependencies]
 actix-web = "4"
-serde_json = "1.0.82"
+actix-multipart = "0.4.0"
+actix-files = "0.6.2"
+
 serde = { version = "1.0.140", features = ["derive"] }
+serde_json = "1.0.82"
+sanitize-filename = "0.4.0"
+uuid = { version = "1.1.2", features = ["v4"] }
+mime = "0.3.16"
+
 deadpool-postgres = "0.10.2"
 tokio-postgres = "0.7.6"
 tokio-pg-mapper = "0.2.0"
 tokio-pg-mapper-derive = "0.2.0"
+
+dotenv = "0.15.0"
 env_logger = "0.9.0"
 log="0.4.0"
-dotenv = "0.15.0"
-actix-multipart = "0.4.0"
+
 futures-util = "0.3.21"
-uuid = { version = "1.1.2", features = ["v4"] }
-sanitize-filename = "0.4.0"
-mime = "0.3.16"
 async-trait = "0.1.57"

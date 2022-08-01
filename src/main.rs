@@ -35,7 +35,7 @@ async fn main() -> std::io::Result<()> {
     dotenv().ok();
     init_logger();
 
-    std::fs::create_dir_all("./tmp").expect("Failed to create ./tmp");
+    std::fs::create_dir_all("./assets").expect("Failed to create ./assets");
 
     let db_pool = init_db_pool();
     let product_repo = product::repo::RepoImpl::new(db_pool.clone());
@@ -48,6 +48,7 @@ async fn main() -> std::io::Result<()> {
             .wrap(logger)
             .app_data(web::Data::new(product_repo.clone()))
             .app_data(web::Data::new(storage_service.clone()))
+            .service(actix_files::Files::new("/assets", "./assets").show_files_listing())
             .configure(product::config)
     })
     .bind(("127.0.0.1", 8080))?

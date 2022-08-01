@@ -28,7 +28,7 @@ impl Storage for StorageImpl {
             (mime::IMAGE, mime::JPEG) => {
                 // TODO: Make file destination configurable
                 let filename = format!("{}.jpeg", uuid::Uuid::new_v4());
-                let file_path = format!("./tmp/{}", filename);
+                let file_path = format!("./assets/{}", filename);
 
                 let mut f = std::fs::File::create(file_path)?;
                 while let Some(chunk) = field.try_next().await? {

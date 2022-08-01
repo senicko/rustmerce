@@ -13,6 +13,8 @@ pub trait Repo {
     async fn insert(&self, data: ProductInsertable) -> Result<Product, AppError>;
 
     async fn delete_by_id(&self, id: i32) -> Result<(), AppError>;
+
+    // async fn add_asset(&self, asset_filename: String) -> Result<(), AppError>;
 }
 
 #[derive(Clone)]
