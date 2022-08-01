@@ -5,17 +5,6 @@ use std::future::Future;
 use std::pin::Pin;
 use tokio_pg_mapper::FromTokioPostgresRow;
 
-#[derive(Clone)]
-pub struct RepoImpl {
-    db_pool: Pool,
-}
-
-impl RepoImpl {
-    pub fn new(db_pool: Pool) -> RepoImpl {
-        RepoImpl { db_pool }
-    }
-}
-
 pub trait Repo {
     fn get_all(&self) -> Pin<Box<dyn Future<Output = Result<Vec<Product>, AppError>> + '_>>;
 
@@ -30,6 +19,17 @@ pub trait Repo {
     ) -> Pin<Box<dyn Future<Output = Result<Product, AppError>> + '_>>;
 
     fn delete_by_id(&self, id: i32) -> Pin<Box<dyn Future<Output = Result<(), AppError>> + '_>>;
+}
+
+#[derive(Clone)]
+pub struct RepoImpl {
+    db_pool: Pool,
+}
+
+impl RepoImpl {
+    pub fn new(db_pool: Pool) -> RepoImpl {
+        RepoImpl { db_pool }
+    }
 }
 
 impl Repo for RepoImpl {

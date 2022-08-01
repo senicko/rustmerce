@@ -6,6 +6,7 @@ use tokio_postgres::NoTls;
 
 mod error;
 mod product;
+mod storage;
 
 fn init_db_pool() -> Pool {
     let db_username = env::var("DB_USERNAME").expect("DB_USERNAME isn't set");
@@ -38,14 +39,15 @@ async fn main() -> std::io::Result<()> {
 
     let db_pool = init_db_pool();
     let product_repo = product::repo::RepoImpl::new(db_pool.clone());
+    let storage_service = storage::StorageImpl::new();
 
     HttpServer::new(move || {
         let logger = Logger::default();
 
         App::new()
             .wrap(logger)
-            .app_data(web::Data::new(db_pool.clone()))
             .app_data(web::Data::new(product_repo.clone()))
+            .app_data(web::Data::new(storage_service.clone()))
             .configure(product::config)
     })
     .bind(("127.0.0.1", 8080))?

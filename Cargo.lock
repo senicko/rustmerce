@@ -1061,6 +1061,7 @@ dependencies = [
  "env_logger",
  "futures-util",
  "log",
+ "mime",
  "sanitize-filename",
  "serde",
  "serde_json",

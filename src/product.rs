@@ -1,16 +1,14 @@
 use crate::{
     error::AppError,
     product::repo::{Repo, RepoImpl},
+    storage::{Storage, StorageImpl},
 };
 use actix_multipart::Multipart;
 use actix_web::{delete, get, post, web, HttpResponse};
-use deadpool_postgres::Pool;
 use futures_util::TryStreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::io::Write;
 use tokio_pg_mapper_derive::PostgresMapper;
-use uuid::Uuid;
 
 pub mod repo;
 
@@ -71,37 +69,33 @@ async fn delete_product(
 
 #[post("/{id}/assets")]
 async fn add_product_assets(
-    id: web::Path<i32>,
+    // id: web::Path<i32>,
     mut payload: Multipart,
-    pool: web::Data<Pool>,
+    storage_service: web::Data<StorageImpl>,
 ) -> Result<HttpResponse, AppError> {
     // TODO: Craete guard or sth that checks if the product exists
-    let conn = pool.get().await?;
+    let mut asset_filename: Option<String> = None;
 
-    while let Some(mut field) = payload.try_next().await? {
-        // Handle file upload
+    while let Some(field) = payload.try_next().await? {
         let content_disposition = field.content_disposition();
 
-        let filename = content_disposition
-            .get_filename()
-            .map_or_else(|| Uuid::new_v4().to_string(), sanitize_filename::sanitize);
-        let file_path = format!("./assets/{filename}");
-
-        let mut f = web::block(|| std::fs::File::create(file_path)).await??;
-        while let Some(chunk) = field.try_next().await? {
-            f = web::block(move || f.write_all(&chunk).map(|_| f)).await??;
+        if Some("image") == content_disposition.get_name() {
+            asset_filename = Some(storage_service.save_image(field).await?);
+            break;
         }
-
-        // Insert asset into database
-        let stmt = conn
-            .prepare_cached("INSERT INTO assets (url, product_id) VALUES ($1, $2)")
-            .await?;
-
-        conn.execute(&stmt, &[&"this_will_be_url".to_string(), &id as &i32])
-            .await?;
     }
 
-    Ok(HttpResponse::Created().finish())
+    if asset_filename == None {
+        return Err(AppError {
+            cause: Some("image field missing".to_string()),
+            message: Some("Invalid request".to_string()),
+            error_type: crate::error::AppErrorType::Internal,
+        });
+    }
+
+    // TODO: connect asset with product
+
+    Ok(HttpResponse::Created().json(json!({ "assetFilename": asset_filename })))
 }
 
 pub fn config(cfg: &mut web::ServiceConfig) {
