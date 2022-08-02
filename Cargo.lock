@@ -1106,7 +1106,7 @@ dependencies = [
  "deadpool-postgres",
  "dotenv",
  "env_logger",
- "futures-util",
+ "futures",
  "log",
  "mime",
  "sanitize-filename",

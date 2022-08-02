@@ -5,16 +5,33 @@ use crate::{
 };
 use actix_multipart::Multipart;
 use actix_web::{delete, get, post, web, HttpResponse};
-use futures_util::TryStreamExt;
+use futures::TryStreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio_pg_mapper_derive::PostgresMapper;
 
 pub mod repo;
 
-#[derive(Debug, Serialize, Deserialize, PostgresMapper)]
-#[pg_mapper(table = "products")]
+#[derive(Serialize, Deserialize, PostgresMapper)]
+#[pg_mapper(table = "assets")]
+pub struct Asset {
+    pub id: i32,
+    pub filename: String,
+}
+
+// TODO: Implement From<ProductRaw> for Product?
+
+#[derive(Serialize, Deserialize)]
 pub struct Product {
+    pub id: i32,
+    pub name: String,
+    pub price: f64,
+    pub assets: Option<Vec<Asset>>,
+}
+
+#[derive(Serialize, Deserialize, PostgresMapper)]
+#[pg_mapper(table = "products")]
+pub struct ProductRaw {
     pub id: i32,
     pub name: String,
     pub price: f64,
@@ -29,6 +46,7 @@ pub struct ProductInsertable {
 #[get("")]
 async fn list_products(product_repo: web::Data<RepoImpl>) -> Result<HttpResponse, AppError> {
     let products = product_repo.get_all().await?;
+
     Ok(HttpResponse::Ok().json(products))
 }
 

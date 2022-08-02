@@ -1,7 +1,8 @@
-use super::ProductInsertable;
-use crate::{error::AppError, product::Product};
+use super::{Asset, Product, ProductInsertable};
+use crate::{error::AppError, product::ProductRaw};
 use async_trait::async_trait;
-use deadpool_postgres::Pool;
+use deadpool_postgres::{Pool, Transaction};
+use futures::{stream::FuturesUnordered, TryStreamExt};
 use tokio_pg_mapper::FromTokioPostgresRow;
 
 #[async_trait]
@@ -26,70 +27,117 @@ impl RepoImpl {
     pub fn new(db_pool: Pool) -> RepoImpl {
         RepoImpl { db_pool }
     }
+
+    async fn get_product_assets<'a>(
+        &self,
+        product_id: i32,
+        transaction: &Transaction<'a>,
+    ) -> Result<Vec<Asset>, AppError> {
+        let assets_rows = transaction
+            .query("SELECT * FROM assets WHERE product_id = $1", &[&product_id])
+            .await?;
+
+        Ok(assets_rows
+            .iter()
+            .map(|row| Ok(Asset::from_row_ref(row)?))
+            .collect::<Result<Vec<Asset>, AppError>>()?)
+    }
 }
 
 #[async_trait]
 impl Repo for RepoImpl {
     async fn get_all(&self) -> Result<Vec<Product>, AppError> {
-        let conn = &self.db_pool.get().await?;
+        let mut conn = self.db_pool.get().await?;
+        let transaction = conn.transaction().await?;
+        let product_rows = transaction.query("SELECT * FROM products", &[]).await?;
 
-        let stmt = conn.prepare_cached("SELECT * FROM products").await?;
-        let rows = conn.query(&stmt, &[]).await?;
+        let products = product_rows
+            .iter()
+            .map(|row| async {
+                let id = row.try_get("id")?;
 
-        rows.iter()
-            .map(|r| Ok(Product::from_row_ref(r)?))
-            .collect::<Result<Vec<Product>, AppError>>()
+                Ok::<_, AppError>(Product {
+                    id,
+                    name: row.try_get("name")?,
+                    price: row.try_get("price")?,
+                    assets: Some(self.get_product_assets(id, &transaction).await?),
+                })
+            })
+            .collect::<FuturesUnordered<_>>()
+            .try_collect::<Vec<_>>()
+            .await?;
+
+        transaction.commit().await?;
+
+        Ok(products)
     }
 
     async fn get_by_id(&self, id: i32) -> Result<Option<Product>, AppError> {
-        let conn = &self.db_pool.get().await?;
+        let mut conn = self.db_pool.get().await?;
+        let transaction = conn.transaction().await?;
 
-        let stmt = conn
-            .prepare_cached("SELECT * FROM products WHERE id = $1")
+        let row = transaction
+            .query_opt("SELECT * FROM products WHERE id = $1", &[&id])
             .await?;
 
-        let row = conn.query_opt(&stmt, &[&id]).await?;
+        let mut product: Option<Product> = None;
 
-        match row {
-            Some(r) => Ok(Some(Product::from_row(r)?)),
-            None => Ok(None),
+        if let Some(row) = row {
+            let product_raw = ProductRaw::from_row(row)?;
+
+            product = Some(Product {
+                id: product_raw.id,
+                name: product_raw.name,
+                price: product_raw.price,
+                assets: Some(
+                    self.get_product_assets(product_raw.id, &transaction)
+                        .await?,
+                ),
+            });
         }
+
+        transaction.commit().await?;
+
+        Ok(product)
     }
 
     async fn insert(&self, product: ProductInsertable) -> Result<Product, AppError> {
-        let conn = &self.db_pool.get().await?;
-
-        let stmt = conn
-            .prepare_cached("INSERT INTO products (name, price) VALUES ($1, $2) RETURNING *")
-            .await?;
+        let conn = self.db_pool.get().await?;
 
         let row = conn
-            .query_one(&stmt, &[&product.name, &product.price])
+            .query_one(
+                "INSERT INTO products (name, price) VALUES ($1, $2) RETURNING *",
+                &[&product.name, &product.price],
+            )
             .await?;
 
-        Ok(Product::from_row(row)?)
+        let product_raw = ProductRaw::from_row(row)?;
+
+        Ok(Product {
+            id: product_raw.id,
+            name: product_raw.name,
+            price: product_raw.price,
+            assets: None,
+        })
     }
 
     async fn delete_by_id(&self, id: i32) -> Result<(), AppError> {
-        let conn = &self.db_pool.get().await?;
+        let conn = self.db_pool.get().await?;
 
-        let stmt = conn
-            .prepare_cached("DELETE FROM products WHERE id = $1")
+        conn.execute("DELETE FROM products WHERE id = $1", &[&id])
             .await?;
-
-        conn.execute(&stmt, &[&id]).await?;
 
         Ok(())
     }
 
     async fn add_asset(&self, product_id: i32, asset_filename: &String) -> Result<(), AppError> {
-        let conn = &self.db_pool.get().await?;
+        let conn = self.db_pool.get().await?;
 
-        let stmt = conn
-            .prepare_cached("INSERT INTO assets (product_id, filename) VALUES ($1, $2)")
-            .await?;
-
-        conn.execute(&stmt, &[&product_id, &asset_filename]).await?;
+        conn.execute(
+            "INSERT INTO assets (product_id, filename) VALUES ($1, $2)",
+            &[&product_id, &asset_filename],
+        )
+        .await?;
 
         Ok(())
     }

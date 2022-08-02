@@ -1,6 +1,6 @@
 use actix_multipart::Field;
 use async_trait::async_trait;
-use futures_util::TryStreamExt;
+use futures::TryStreamExt;
 use std::io::Write;
 
 use crate::error::{AppError, AppErrorType};
