@@ -1,5 +1,5 @@
 use super::{Asset, Product, ProductInsertable};
-use crate::{error::AppError, product::ProductRaw};
+use crate::error::{AppError, AppErrorType};
 use async_trait::async_trait;
 use deadpool_postgres::{Pool, Transaction};
 use futures::{stream::FuturesUnordered, TryStreamExt};
@@ -8,13 +8,9 @@ use tokio_pg_mapper::FromTokioPostgresRow;
 #[async_trait]
 pub trait Repo {
     async fn get_all(&self) -> Result<Vec<Product>, AppError>;
-
-    async fn get_by_id(&self, id: i32) -> Result<Option<Product>, AppError>;
-
+    async fn get_by_id(&self, id: i32) -> Result<Product, AppError>;
     async fn insert(&self, data: ProductInsertable) -> Result<Product, AppError>;
-
     async fn delete_by_id(&self, id: i32) -> Result<(), AppError>;
-
     async fn add_asset(&self, product_id: i32, asset_filename: &String) -> Result<(), AppError>;
 }
 
@@ -49,56 +45,67 @@ impl Repo for RepoImpl {
     async fn get_all(&self) -> Result<Vec<Product>, AppError> {
         let mut conn = self.db_pool.get().await?;
         let transaction = conn.transaction().await?;
-        let product_rows = transaction.query("SELECT * FROM products", &[]).await?;
 
-        let products = product_rows
-            .iter()
-            .map(|row| async {
-                let id = row.try_get("id")?;
+        let result = async {
+            let product_rows = transaction.query("SELECT * FROM products", &[]).await?;
+            let transaction_ref = &transaction;
 
-                Ok::<_, AppError>(Product {
-                    id,
-                    name: row.try_get("name")?,
-                    price: row.try_get("price")?,
-                    assets: Some(self.get_product_assets(id, &transaction).await?),
-                })
-            })
-            .collect::<FuturesUnordered<_>>()
-            .try_collect::<Vec<_>>()
-            .await?;
+            Ok::<_, AppError>(
+                product_rows
+                    .iter()
+                    .map(|row| async move {
+                        let mut product = Product::try_from(row)?;
+                        product.assets =
+                            self.get_product_assets(product.id, transaction_ref).await?;
 
-        transaction.commit().await?;
+                        Ok::<_, AppError>(product)
+                    })
+                    .collect::<FuturesUnordered<_>>()
+                    .try_collect::<Vec<_>>()
+                    .await?,
+            )
+        }
+        .await;
 
-        Ok(products)
+        match result {
+            Ok(_) => transaction.commit().await?,
+            Err(_) => transaction.rollback().await?,
+        };
+
+        result
     }
 
-    async fn get_by_id(&self, id: i32) -> Result<Option<Product>, AppError> {
+    async fn get_by_id(&self, id: i32) -> Result<Product, AppError> {
         let mut conn = self.db_pool.get().await?;
         let transaction = conn.transaction().await?;
 
-        let row = transaction
-            .query_opt("SELECT * FROM products WHERE id = $1", &[&id])
-            .await?;
+        let result = async {
+            let row = transaction
+                .query_opt("SELECT * FROM products WHERE id = $1", &[&id])
+                .await?;
 
-        let mut product: Option<Product> = None;
+            match row {
+                Some(row) => {
+                    let mut product = Product::try_from(row)?;
+                    product.assets = self.get_product_assets(product.id, &transaction).await?;
 
-        if let Some(row) = row {
-            let product_raw = ProductRaw::from_row(row)?;
-
-            product = Some(Product {
-                id: product_raw.id,
-                name: product_raw.name,
-                price: product_raw.price,
-                assets: Some(
-                    self.get_product_assets(product_raw.id, &transaction)
-                        .await?,
-                ),
-            });
+                    Ok(product)
+                }
+                None => Err(AppError {
+                    cause: None,
+                    message: Some("Product not found".to_string()),
+                    error_type: AppErrorType::NotFound,
+                }),
+            }
         }
+        .await;
 
-        transaction.commit().await?;
+        match result {
+            Ok(_) => transaction.commit().await?,
+            Err(_) => transaction.rollback().await?,
+        };
 
-        Ok(product)
+        result
     }
 
     async fn insert(&self, product: ProductInsertable) -> Result<Product, AppError> {
@@ -111,14 +118,7 @@ impl Repo for RepoImpl {
             )
             .await?;
 
-        let product_raw = ProductRaw::from_row(row)?;
-
-        Ok(Product {
-            id: product_raw.id,
-            name: product_raw.name,
-            price: product_raw.price,
-            assets: None,
-        })
+        Ok(Product::try_from(row)?)
     }
 
     async fn delete_by_id(&self, id: i32) -> Result<(), AppError> {

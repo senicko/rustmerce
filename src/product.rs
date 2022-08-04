@@ -9,6 +9,7 @@ use futures::TryStreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio_pg_mapper_derive::PostgresMapper;
+use tokio_postgres::Row;
 
 pub mod repo;
 
@@ -19,22 +20,40 @@ pub struct Asset {
     pub filename: String,
 }
 
-// TODO: Implement From<ProductRaw> for Product?
+// TODO: when assets are None it serializes to null (make just a Vec instead of Option)
 
 #[derive(Serialize, Deserialize)]
 pub struct Product {
     pub id: i32,
     pub name: String,
     pub price: f64,
-    pub assets: Option<Vec<Asset>>,
+    pub assets: Vec<Asset>,
 }
 
-#[derive(Serialize, Deserialize, PostgresMapper)]
-#[pg_mapper(table = "products")]
-pub struct ProductRaw {
-    pub id: i32,
-    pub name: String,
-    pub price: f64,
+impl TryFrom<Row> for Product {
+    type Error = tokio_postgres::Error;
+
+    fn try_from(row: Row) -> Result<Self, Self::Error> {
+        Ok(Product {
+            id: row.try_get("id")?,
+            name: row.try_get("name")?,
+            price: row.try_get("price")?,
+            assets: Vec::new(),
+        })
+    }
+}
+
+impl TryFrom<&Row> for Product {
+    type Error = tokio_postgres::Error;
+
+    fn try_from(row: &Row) -> Result<Self, Self::Error> {
+        Ok(Product {
+            id: row.try_get("id")?,
+            name: row.try_get("name")?,
+            price: row.try_get("price")?,
+            assets: Vec::new(),
+        })
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -57,12 +76,7 @@ async fn get_product(
 ) -> Result<HttpResponse, AppError> {
     let product = product_repo.get_by_id(id.into_inner()).await?;
 
-    match product {
-        Some(p) => Ok(HttpResponse::Ok().json(p)),
-        None => Ok(HttpResponse::NotFound().json(json!({
-            "message": "Product not found"
-        }))),
-    }
+    Ok(HttpResponse::Ok().json(product))
 }
 
 #[post("")]
