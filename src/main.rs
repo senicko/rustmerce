@@ -49,7 +49,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(product_repo.clone()))
             .app_data(web::Data::new(storage_service.clone()))
             .service(actix_files::Files::new("/assets", "./assets").show_files_listing())
-            .configure(product::config)
+            .configure(product::handlers::config)
     })
     .bind(("127.0.0.1", 8080))?
     .run()
