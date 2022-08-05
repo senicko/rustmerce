@@ -1,8 +1,3 @@
-use actix_multipart::Multipart;
-use actix_web::{delete, get, post, web, HttpResponse};
-use futures::TryStreamExt;
-use serde_json::json;
-
 use crate::{
     error::AppError,
     product::{
@@ -11,6 +6,10 @@ use crate::{
     },
     storage::{Storage, StorageImpl},
 };
+use actix_multipart::Multipart;
+use actix_web::{delete, get, post, web, HttpResponse};
+use futures::TryStreamExt;
+use serde_json::json;
 
 #[get("")]
 async fn list_products(product_repo: web::Data<RepoImpl>) -> Result<HttpResponse, AppError> {
@@ -53,10 +52,9 @@ async fn delete_product(
 async fn add_product_assets(
     id: web::Path<i32>,
     mut payload: Multipart,
-    product_repo: web::Data<RepoImpl>,
+    product_repo: web::Data<Box<dyn Repo>>,
     storage_service: web::Data<StorageImpl>,
 ) -> Result<HttpResponse, AppError> {
-    // TODO: Create guard or sth that checks if the product exists
     let mut filename: Option<String> = None;
 
     while let Some(field) = payload.try_next().await? {
@@ -70,9 +68,16 @@ async fn add_product_assets(
 
     match filename {
         Some(filename) => {
-            product_repo.add_asset(id.into_inner(), &filename).await?;
+            let result = product_repo.add_asset(id.into_inner(), &filename).await;
 
-            Ok(HttpResponse::Created().json(json!({ "filename": filename })))
+            match result {
+                Ok(_) => Ok(HttpResponse::Created().json(json!({ "filename": filename }))),
+                Err(e) => {
+                    storage_service.delete_image(&filename).await?;
+
+                    Err(e)
+                }
+            }
         }
         None => Err(AppError {
             cause: Some("image field missing".to_string()),

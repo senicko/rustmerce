@@ -8,6 +8,7 @@ use crate::error::{AppError, AppErrorType};
 #[async_trait(?Send)]
 pub trait Storage {
     async fn save_image(&self, field: Field) -> Result<String, AppError>;
+    async fn delete_image(&self, filename: &str) -> Result<(), AppError>;
 }
 
 #[derive(Clone)]
@@ -46,5 +47,12 @@ impl Storage for StorageImpl {
                 error_type: AppErrorType::Internal,
             }),
         }
+    }
+
+    async fn delete_image(&self, filename: &str) -> Result<(), AppError> {
+        let file_path = format!("./assets/{}", filename);
+        std::fs::remove_file(file_path)?;
+
+        Ok(())
     }
 }

@@ -20,19 +20,6 @@ pub struct Product {
     pub assets: Vec<Asset>,
 }
 
-impl TryFrom<Row> for Product {
-    type Error = tokio_postgres::Error;
-
-    fn try_from(row: Row) -> Result<Self, Self::Error> {
-        Ok(Product {
-            id: row.try_get("id")?,
-            name: row.try_get("name")?,
-            price: row.try_get("price")?,
-            assets: Vec::new(),
-        })
-    }
-}
-
 impl TryFrom<&Row> for Product {
     type Error = tokio_postgres::Error;
 

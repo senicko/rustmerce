@@ -86,7 +86,7 @@ impl Repo for RepoImpl {
 
             match row {
                 Some(row) => {
-                    let mut product = Product::try_from(row)?;
+                    let mut product = Product::try_from(&row)?;
                     product.assets = self.get_product_assets(product.id, &transaction).await?;
 
                     Ok(product)
@@ -118,7 +118,7 @@ impl Repo for RepoImpl {
             )
             .await?;
 
-        Ok(Product::try_from(row)?)
+        Ok(Product::try_from(&row)?)
     }
 
     async fn delete_by_id(&self, id: i32) -> Result<(), AppError> {
