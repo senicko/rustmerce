@@ -1,5 +1,5 @@
 use crate::{
-    error::AppError,
+    error::{Error, ErrorKind},
     product::{
         repo::{Repo, RepoImpl},
         ProductInsertable,
@@ -12,7 +12,7 @@ use futures::TryStreamExt;
 use serde_json::json;
 
 #[get("")]
-async fn list_products(product_repo: web::Data<RepoImpl>) -> Result<HttpResponse, AppError> {
+async fn list_products(product_repo: web::Data<RepoImpl>) -> Result<HttpResponse, Error> {
     let products = product_repo.get_all().await?;
 
     Ok(HttpResponse::Ok().json(products))
@@ -22,17 +22,20 @@ async fn list_products(product_repo: web::Data<RepoImpl>) -> Result<HttpResponse
 async fn get_product(
     id: web::Path<i32>,
     product_repo: web::Data<RepoImpl>,
-) -> Result<HttpResponse, AppError> {
+) -> Result<HttpResponse, Error> {
     let product = product_repo.get_by_id(id.into_inner()).await?;
 
-    Ok(HttpResponse::Ok().json(product))
+    match product {
+        Some(p) => Ok(HttpResponse::Ok().json(p)),
+        None => Ok(HttpResponse::NotFound().finish()),
+    }
 }
 
 #[post("")]
 async fn create_product(
     data: web::Json<ProductInsertable>,
     product_repo: web::Data<RepoImpl>,
-) -> Result<HttpResponse, AppError> {
+) -> Result<HttpResponse, Error> {
     let created = product_repo.insert(data.into_inner()).await?;
 
     Ok(HttpResponse::Created().json(created))
@@ -42,7 +45,7 @@ async fn create_product(
 async fn delete_product(
     id: web::Path<i32>,
     product_repo: web::Data<RepoImpl>,
-) -> Result<HttpResponse, AppError> {
+) -> Result<HttpResponse, Error> {
     product_repo.delete_by_id(id.into_inner()).await?;
 
     Ok(HttpResponse::Ok().finish())
@@ -52,39 +55,32 @@ async fn delete_product(
 async fn add_product_assets(
     id: web::Path<i32>,
     mut payload: Multipart,
-    product_repo: web::Data<Box<dyn Repo>>,
+    product_repo: web::Data<RepoImpl>,
     storage_service: web::Data<StorageImpl>,
-) -> Result<HttpResponse, AppError> {
-    let mut filename: Option<String> = None;
-
+) -> Result<HttpResponse, Error> {
     while let Some(field) = payload.try_next().await? {
         let content_disposition = field.content_disposition();
 
         if Some("image") == content_disposition.get_name() {
-            filename = Some(storage_service.save_image(field).await?);
-            break;
-        }
-    }
+            let filename = storage_service.save_image(field).await?;
 
-    match filename {
-        Some(filename) => {
             let result = product_repo.add_asset(id.into_inner(), &filename).await;
 
-            match result {
+            return match result {
                 Ok(_) => Ok(HttpResponse::Created().json(json!({ "filename": filename }))),
                 Err(e) => {
                     storage_service.delete_image(&filename).await?;
 
                     Err(e)
                 }
-            }
+            };
         }
-        None => Err(AppError {
-            cause: Some("image field missing".to_string()),
-            message: Some("Invalid request".to_string()),
-            error_type: crate::error::AppErrorType::Internal,
-        }),
     }
+
+    Err(Error::new(
+        "`image` must be set".to_string(),
+        ErrorKind::Internal,
+    ))
 }
 
 pub fn config(cfg: &mut web::ServiceConfig) {

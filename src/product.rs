@@ -4,6 +4,7 @@ use tokio_postgres::Row;
 
 pub mod handlers;
 pub mod repo;
+pub mod service;
 
 #[derive(Serialize, Deserialize, PostgresMapper)]
 #[pg_mapper(table = "assets")]

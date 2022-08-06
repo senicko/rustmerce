@@ -1,64 +1,60 @@
-use actix_web::body::BoxBody;
-use actix_web::{http::StatusCode, HttpResponse, ResponseError};
+use actix_web::http::StatusCode;
+use actix_web::HttpResponse;
+use actix_web::ResponseError;
 use serde_json::json;
-use std::fmt::{Display, Formatter};
+use std::error;
+use std::fmt;
 
 #[derive(Debug)]
-pub enum AppErrorType {
+pub enum ErrorKind {
     Internal,
-    NotFound,
+    BadRequest,
 }
 
 #[derive(Debug)]
-pub struct AppError {
-    pub cause: Option<String>,
-    pub message: Option<String>,
-    pub error_type: AppErrorType,
+pub struct Error {
+    message: String,
+    kind: ErrorKind,
 }
 
-impl AppError {
-    fn client_message(&self) -> String {
-        if let Some(m) = &self.message {
-            return m.clone();
-        }
-
-        match &self.error_type {
-            AppErrorType::Internal => "Internal Server Error".to_string(),
-            AppErrorType::NotFound => "Resource Not Found".to_string(),
-        }
+impl Error {
+    pub fn new(message: String, kind: ErrorKind) -> Self {
+        Error { message, kind }
     }
 }
 
-impl<T> From<T> for AppError
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "server error: {}", self.message)
+    }
+}
+
+impl<T> From<T> for Error
 where
-    T: std::error::Error,
+    T: error::Error,
 {
     fn from(e: T) -> Self {
-        AppError {
-            cause: Some(e.to_string()),
-            message: None,
-            error_type: AppErrorType::Internal,
+        Error {
+            message: e.to_string(),
+            kind: ErrorKind::Internal,
         }
     }
 }
 
-impl Display for AppError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
-impl ResponseError for AppError {
-    fn status_code(&self) -> StatusCode {
-        match &self.error_type {
-            AppErrorType::Internal => StatusCode::INTERNAL_SERVER_ERROR,
-            AppErrorType::NotFound => StatusCode::NOT_FOUND,
+impl ResponseError for Error {
+    fn status_code(&self) -> actix_web::http::StatusCode {
+        match self.kind {
+            ErrorKind::Internal => StatusCode::INTERNAL_SERVER_ERROR,
+            ErrorKind::BadRequest => StatusCode::BAD_REQUEST,
         }
     }
 
-    fn error_response(&self) -> HttpResponse<BoxBody> {
-        HttpResponse::build(self.status_code()).json(json!({
-            "message": self.client_message()
-        }))
+    fn error_response(&self) -> HttpResponse {
+        match self.kind {
+            ErrorKind::Internal => HttpResponse::build(self.status_code()).finish(),
+            ErrorKind::BadRequest => HttpResponse::build(self.status_code()).json(json!({
+                "message": self.message
+            })),
+        }
     }
 }

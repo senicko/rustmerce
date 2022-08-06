@@ -1,14 +1,13 @@
+use crate::error::{Error, ErrorKind};
 use actix_multipart::Field;
 use async_trait::async_trait;
 use futures::TryStreamExt;
 use std::io::Write;
 
-use crate::error::{AppError, AppErrorType};
-
 #[async_trait(?Send)]
 pub trait Storage {
-    async fn save_image(&self, field: Field) -> Result<String, AppError>;
-    async fn delete_image(&self, filename: &str) -> Result<(), AppError>;
+    async fn save_image(&self, field: Field) -> Result<String, Error>;
+    async fn delete_image(&self, filename: &str) -> Result<(), Error>;
 }
 
 #[derive(Clone)]
@@ -22,7 +21,7 @@ impl StorageImpl {
 
 #[async_trait(?Send)]
 impl Storage for StorageImpl {
-    async fn save_image(&self, mut field: Field) -> Result<String, AppError> {
+    async fn save_image(&self, mut field: Field) -> Result<String, Error> {
         let mime = field.content_type();
 
         match (mime.type_(), mime.subtype()) {
@@ -38,18 +37,14 @@ impl Storage for StorageImpl {
 
                 Ok(filename)
             }
-            _ => Err(AppError {
-                cause: Some(format!(
-                    "Invalid image mime type. Expected image/jpeg but got {}.",
-                    mime.essence_str()
-                )),
-                message: Some("Image must be in a jpeg/jpg format.".to_string()),
-                error_type: AppErrorType::Internal,
-            }),
+            _ => Err(Error::new(
+                "Invalid mime type".to_string(),
+                ErrorKind::BadRequest,
+            )),
         }
     }
 
-    async fn delete_image(&self, filename: &str) -> Result<(), AppError> {
+    async fn delete_image(&self, filename: &str) -> Result<(), Error> {
         let file_path = format!("./assets/{}", filename);
         std::fs::remove_file(file_path)?;
 

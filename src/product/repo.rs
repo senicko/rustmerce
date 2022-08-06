@@ -1,5 +1,6 @@
+use crate::error::Error;
+
 use super::{Asset, Product, ProductInsertable};
-use crate::error::{AppError, AppErrorType};
 use async_trait::async_trait;
 use deadpool_postgres::{Pool, Transaction};
 use futures::{stream::FuturesUnordered, TryStreamExt};
@@ -7,11 +8,11 @@ use tokio_pg_mapper::FromTokioPostgresRow;
 
 #[async_trait]
 pub trait Repo {
-    async fn get_all(&self) -> Result<Vec<Product>, AppError>;
-    async fn get_by_id(&self, id: i32) -> Result<Product, AppError>;
-    async fn insert(&self, data: ProductInsertable) -> Result<Product, AppError>;
-    async fn delete_by_id(&self, id: i32) -> Result<(), AppError>;
-    async fn add_asset(&self, product_id: i32, asset_filename: &String) -> Result<(), AppError>;
+    async fn get_all(&self) -> Result<Vec<Product>, Error>;
+    async fn get_by_id(&self, id: i32) -> Result<Option<Product>, Error>;
+    async fn insert(&self, data: ProductInsertable) -> Result<Product, Error>;
+    async fn delete_by_id(&self, id: i32) -> Result<(), Error>;
+    async fn add_asset(&self, product_id: i32, asset_filename: &String) -> Result<(), Error>;
 }
 
 #[derive(Clone)]
@@ -20,7 +21,7 @@ pub struct RepoImpl {
 }
 
 impl RepoImpl {
-    pub fn new(db_pool: Pool) -> RepoImpl {
+    pub fn new(db_pool: Pool) -> Self {
         RepoImpl { db_pool }
     }
 
@@ -28,7 +29,7 @@ impl RepoImpl {
         &self,
         product_id: i32,
         transaction: &Transaction<'a>,
-    ) -> Result<Vec<Asset>, AppError> {
+    ) -> Result<Vec<Asset>, Error> {
         let assets_rows = transaction
             .query("SELECT * FROM assets WHERE product_id = $1", &[&product_id])
             .await?;
@@ -36,13 +37,13 @@ impl RepoImpl {
         Ok(assets_rows
             .iter()
             .map(|row| Ok(Asset::from_row_ref(row)?))
-            .collect::<Result<Vec<Asset>, AppError>>()?)
+            .collect::<Result<Vec<Asset>, Error>>()?)
     }
 }
 
 #[async_trait]
 impl Repo for RepoImpl {
-    async fn get_all(&self) -> Result<Vec<Product>, AppError> {
+    async fn get_all(&self) -> Result<Vec<Product>, Error> {
         let mut conn = self.db_pool.get().await?;
         let transaction = conn.transaction().await?;
 
@@ -50,7 +51,7 @@ impl Repo for RepoImpl {
             let product_rows = transaction.query("SELECT * FROM products", &[]).await?;
             let transaction_ref = &transaction;
 
-            Ok::<_, AppError>(
+            Ok::<_, Error>(
                 product_rows
                     .iter()
                     .map(|row| async move {
@@ -58,7 +59,7 @@ impl Repo for RepoImpl {
                         product.assets =
                             self.get_product_assets(product.id, transaction_ref).await?;
 
-                        Ok::<_, AppError>(product)
+                        Ok::<_, Error>(product)
                     })
                     .collect::<FuturesUnordered<_>>()
                     .try_collect::<Vec<_>>()
@@ -75,7 +76,7 @@ impl Repo for RepoImpl {
         result
     }
 
-    async fn get_by_id(&self, id: i32) -> Result<Product, AppError> {
+    async fn get_by_id(&self, id: i32) -> Result<Option<Product>, Error> {
         let mut conn = self.db_pool.get().await?;
         let transaction = conn.transaction().await?;
 
@@ -89,13 +90,9 @@ impl Repo for RepoImpl {
                     let mut product = Product::try_from(&row)?;
                     product.assets = self.get_product_assets(product.id, &transaction).await?;
 
-                    Ok(product)
+                    Ok(Some(product))
                 }
-                None => Err(AppError {
-                    cause: None,
-                    message: Some("Product not found".to_string()),
-                    error_type: AppErrorType::NotFound,
-                }),
+                None => Ok(None),
             }
         }
         .await;
@@ -108,7 +105,7 @@ impl Repo for RepoImpl {
         result
     }
 
-    async fn insert(&self, product: ProductInsertable) -> Result<Product, AppError> {
+    async fn insert(&self, product: ProductInsertable) -> Result<Product, Error> {
         let conn = self.db_pool.get().await?;
 
         let row = conn
@@ -121,7 +118,7 @@ impl Repo for RepoImpl {
         Ok(Product::try_from(&row)?)
     }
 
-    async fn delete_by_id(&self, id: i32) -> Result<(), AppError> {
+    async fn delete_by_id(&self, id: i32) -> Result<(), Error> {
         let conn = self.db_pool.get().await?;
 
         conn.execute("DELETE FROM products WHERE id = $1", &[&id])
@@ -130,7 +127,7 @@ impl Repo for RepoImpl {
         Ok(())
     }
 
-    async fn add_asset(&self, product_id: i32, asset_filename: &String) -> Result<(), AppError> {
+    async fn add_asset(&self, product_id: i32, asset_filename: &String) -> Result<(), Error> {
         let conn = self.db_pool.get().await?;
 
         conn.execute(
