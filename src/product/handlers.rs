@@ -7,8 +7,8 @@ use crate::{
     storage::{Storage, StorageImpl},
 };
 use actix_multipart::Multipart;
-use actix_web::{dev::Service, web, HttpResponse};
-use futures::{FutureExt, StreamExt};
+use actix_web::{web, HttpResponse};
+use futures::StreamExt;
 use serde_json::json;
 
 async fn list_products(product_repo: web::Data<RepoImpl>) -> Result<HttpResponse, Error> {
