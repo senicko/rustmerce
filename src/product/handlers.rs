@@ -7,18 +7,16 @@ use crate::{
     storage::{Storage, StorageImpl},
 };
 use actix_multipart::Multipart;
-use actix_web::{delete, get, post, web, HttpResponse};
-use futures::TryStreamExt;
+use actix_web::{dev::Service, web, HttpResponse};
+use futures::{FutureExt, StreamExt};
 use serde_json::json;
 
-#[get("")]
 async fn list_products(product_repo: web::Data<RepoImpl>) -> Result<HttpResponse, Error> {
     let products = product_repo.get_all().await?;
 
     Ok(HttpResponse::Ok().json(products))
 }
 
-#[get("/{id}")]
 async fn get_product(
     id: web::Path<i32>,
     product_repo: web::Data<RepoImpl>,
@@ -31,7 +29,6 @@ async fn get_product(
     }
 }
 
-#[post("")]
 async fn create_product(
     data: web::Json<ProductInsertable>,
     product_repo: web::Data<RepoImpl>,
@@ -41,7 +38,6 @@ async fn create_product(
     Ok(HttpResponse::Created().json(created))
 }
 
-#[delete("/{id}")]
 async fn delete_product(
     id: web::Path<i32>,
     product_repo: web::Data<RepoImpl>,
@@ -51,23 +47,21 @@ async fn delete_product(
     Ok(HttpResponse::Ok().finish())
 }
 
-#[post("/{id}/assets")]
-async fn add_product_assets(
+async fn add_product_asset(
     id: web::Path<i32>,
     mut payload: Multipart,
     product_repo: web::Data<RepoImpl>,
     storage_service: web::Data<StorageImpl>,
 ) -> Result<HttpResponse, Error> {
-    while let Some(field) = payload.try_next().await? {
+    while let Some(Ok(field)) = payload.next().await {
         let content_disposition = field.content_disposition();
 
         if Some("image") == content_disposition.get_name() {
             let filename = storage_service.save_image(field).await?;
-
             let result = product_repo.add_asset(id.into_inner(), &filename).await;
 
             return match result {
-                Ok(_) => Ok(HttpResponse::Created().json(json!({ "filename": filename }))),
+                Ok(()) => Ok(HttpResponse::Created().json(json!({ "filename": filename }))),
                 Err(e) => {
                     storage_service.delete_image(&filename).await?;
 
@@ -78,18 +72,27 @@ async fn add_product_assets(
     }
 
     Err(Error::new(
-        "`image` must be set".to_string(),
-        ErrorKind::Internal,
+        "Invalid request".to_string(),
+        ErrorKind::BadRequest,
     ))
 }
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/products")
-            .service(list_products)
-            .service(get_product)
-            .service(create_product)
-            .service(delete_product)
-            .service(add_product_assets),
+            .service(
+                web::resource("")
+                    .route(web::get().to(list_products))
+                    .route(web::post().to(create_product)),
+            )
+            .service(
+                web::scope("{id}")
+                    .service(
+                        web::resource("")
+                            .route(web::get().to(get_product))
+                            .route(web::delete().to(delete_product)),
+                    )
+                    .route("/assets", web::post().to(add_product_asset)),
+            ),
     );
 }
