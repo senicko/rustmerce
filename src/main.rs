@@ -26,7 +26,6 @@ fn init_db_pool() -> Pool {
 
 fn init_logger() {
     env::set_var("RUST_LOG", "debug");
-    env::set_var("RUST_BACKTRACE", "1");
     env_logger::init();
 }
 
