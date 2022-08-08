@@ -11,13 +11,7 @@ pub trait Storage {
 }
 
 #[derive(Clone)]
-pub struct StorageImpl {}
-
-impl StorageImpl {
-    pub fn new() -> StorageImpl {
-        StorageImpl {}
-    }
-}
+pub struct StorageImpl;
 
 #[async_trait(?Send)]
 impl Storage for StorageImpl {

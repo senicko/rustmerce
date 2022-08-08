@@ -56,7 +56,7 @@ async fn add_product_asset(
     while let Some(Ok(field)) = payload.next().await {
         let content_disposition = field.content_disposition();
 
-        if Some("image") == content_disposition.get_name() {
+        if Some("payload") == content_disposition.get_name() {
             let filename = storage_service.save_image(field).await?;
             let result = product_repo.add_asset(id.into_inner(), &filename).await;
 

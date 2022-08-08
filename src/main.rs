@@ -39,7 +39,7 @@ async fn main() -> std::io::Result<()> {
 
     let db_pool = init_db_pool();
     let product_repo = product::repo::RepoImpl::new(db_pool.clone());
-    let storage_service = storage::StorageImpl::new();
+    let storage_service = storage::StorageImpl;
 
     HttpServer::new(move || {
         let logger = Logger::default();
