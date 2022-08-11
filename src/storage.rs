@@ -1,13 +1,25 @@
-use crate::error::{Error, ErrorKind};
 use actix_multipart::Field;
 use async_trait::async_trait;
 use futures::TryStreamExt;
 use std::io::Write;
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum StorageError {
+    #[error("IO operation failed")]
+    Io(#[from] std::io::Error),
+
+    #[error("Multipart error")]
+    Multipart(#[from] actix_multipart::MultipartError),
+
+    #[error("Invalid mime type")]
+    InvalidMimeType,
+}
 
 #[async_trait(?Send)]
 pub trait Storage {
-    async fn save_image(&self, field: Field) -> Result<String, Error>;
-    async fn delete_image(&self, filename: &str) -> Result<(), Error>;
+    async fn save_image(&self, field: Field) -> Result<String, StorageError>;
+    async fn delete_image(&self, filename: &str) -> Result<(), StorageError>;
 }
 
 #[derive(Clone)]
@@ -15,7 +27,7 @@ pub struct StorageImpl;
 
 #[async_trait(?Send)]
 impl Storage for StorageImpl {
-    async fn save_image(&self, mut field: Field) -> Result<String, Error> {
+    async fn save_image(&self, mut field: Field) -> Result<String, StorageError> {
         let mime = field.content_type();
 
         match (mime.type_(), mime.subtype()) {
@@ -31,14 +43,11 @@ impl Storage for StorageImpl {
 
                 Ok(filename)
             }
-            _ => Err(Error::new(
-                "Invalid mime type".to_string(),
-                ErrorKind::BadRequest,
-            )),
+            _ => Err(StorageError::InvalidMimeType),
         }
     }
 
-    async fn delete_image(&self, filename: &str) -> Result<(), Error> {
+    async fn delete_image(&self, filename: &str) -> Result<(), StorageError> {
         let file_path = format!("./assets/{}", filename);
         std::fs::remove_file(file_path)?;
 

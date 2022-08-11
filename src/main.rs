@@ -4,7 +4,6 @@ use dotenv::dotenv;
 use std::env;
 use tokio_postgres::NoTls;
 
-mod error;
 mod product;
 mod storage;
 
@@ -13,6 +12,7 @@ fn init_db_pool() -> Pool {
     let db_url = env::var("DB_NAME").expect("DB_NAME isn't set");
 
     let mut config = Config::new();
+
     config.user = Some(db_username);
     config.dbname = Some(db_url);
     config.manager = Some(ManagerConfig {
@@ -36,16 +36,18 @@ async fn main() -> std::io::Result<()> {
 
     std::fs::create_dir_all("./assets").expect("Failed to create ./assets");
 
-    let db_pool = init_db_pool();
-    let product_repo = product::repo::RepoImpl::new(db_pool.clone());
     let storage_service = storage::StorageImpl;
+
+    let db_pool = init_db_pool();
+    let product_repo = product::repo::RepoImpl::new(db_pool);
+    let product_service = product::service::ServiceImpl::new(product_repo);
 
     HttpServer::new(move || {
         let logger = Logger::default();
 
         App::new()
             .wrap(logger)
-            .app_data(web::Data::new(product_repo.clone()))
+            .app_data(web::Data::new(product_service.clone()))
             .app_data(web::Data::new(storage_service.clone()))
             .service(actix_files::Files::new("/assets", "./assets").show_files_listing())
             .configure(product::handlers::config)

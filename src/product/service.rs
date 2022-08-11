@@ -1,27 +1,68 @@
-// use crate::product::Product;
-// use actix_web::Error;
-// use async_trait::async_trait;
+use actix_web::{http::StatusCode, HttpResponse, ResponseError};
+use async_trait::async_trait;
+use serde_json::json;
+use thiserror::Error;
 
-// use super::repo::{Repo, RepoImpl};
+use super::{
+    repo::{Repo, RepoError, RepoImpl},
+    Product, ProductInsertable,
+};
 
-// #[async_trait]
-// pub trait Service {
-//     async fn get_all(&self) -> Result<Vec<Product>, Box<dyn Error>>;
-// }
+#[derive(Error, Debug)]
+pub enum ServiceError {
+    #[error("Repository failed")]
+    RepoError(#[from] RepoError),
+}
 
-// pub struct ServiceImpl {
-//     repo: RepoImpl,
-// }
+impl ResponseError for ServiceError {
+    fn status_code(&self) -> actix_web::http::StatusCode {
+        match self {
+            ServiceError::RepoError(e) => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
 
-// impl ServiceImpl {
-//     fn new(repo: RepoImpl) -> Self {
-//         ServiceImpl { repo }
-//     }
-// }
+    fn error_response(&self) -> HttpResponse {
+        HttpResponse::build(self.status_code()).json(json!({
+            "error": "Internal server error",
+        }))
+    }
+}
 
-// #[async_trait]
-// impl Service for ServiceImpl {
-//     async fn get_all(&self) -> Result<Vec<Product>, Error> {
-//         Ok(self.repo.get_all().await?)
-//     }
-// }
+#[async_trait]
+pub trait Service {
+    async fn get_all(&self) -> Result<Vec<Product>, ServiceError>;
+    async fn get_one(&self, id: i32) -> Result<Option<Product>, ServiceError>;
+    async fn create(&self, data: ProductInsertable) -> Result<Product, ServiceError>;
+    async fn delete(&self, id: i32) -> Result<(), ServiceError>;
+}
+
+#[derive(Clone)]
+pub struct ServiceImpl {
+    // TODO: Change this to type that accepts any struct which implements Repo trait
+    repo: RepoImpl,
+}
+
+impl ServiceImpl {
+    pub fn new(repo: RepoImpl) -> Self {
+        ServiceImpl { repo }
+    }
+}
+
+#[async_trait]
+impl Service for ServiceImpl {
+    async fn get_all(&self) -> Result<Vec<Product>, ServiceError> {
+        Ok(self.repo.get_all().await?)
+    }
+
+    async fn get_one(&self, id: i32) -> Result<Option<Product>, ServiceError> {
+        Ok(self.repo.get_by_id(id).await?)
+    }
+
+    async fn create(&self, data: ProductInsertable) -> Result<Product, ServiceError> {
+        Ok(self.repo.insert(data).await?)
+    }
+
+    async fn delete(&self, id: i32) -> Result<(), ServiceError> {
+        Ok(self.repo.delete_by_id(id).await?)
+    }
+}

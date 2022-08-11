@@ -22,7 +22,7 @@ pub struct Product {
 }
 
 impl TryFrom<&Row> for Product {
-    type Error = tokio_postgres::Error;
+    type Error = tokio_pg_mapper::Error;
 
     fn try_from(row: &Row) -> Result<Self, Self::Error> {
         Ok(Product {
