@@ -39,8 +39,8 @@ async fn main() -> std::io::Result<()> {
     let storage_service = storage::StorageImpl;
 
     let db_pool = init_db_pool();
-    let product_repo = product::repo::RepoImpl::new(db_pool);
-    let product_service = product::service::ServiceImpl::new(product_repo);
+    let product_repo = product::repo::ProductRepo::new(db_pool);
+    let product_service = product::service::ProductService::new(product_repo);
 
     HttpServer::new(move || {
         let logger = Logger::default();
