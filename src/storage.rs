@@ -1,8 +1,5 @@
 use actix_multipart::Multipart;
-use actix_web::{HttpResponse, ResponseError};
-use async_trait::async_trait;
 use futures::{StreamExt, TryStreamExt};
-use serde_json::json;
 use std::{io::Write, ops::Deref};
 use thiserror::Error;
 
@@ -21,50 +18,15 @@ pub enum StorageError {
     InvalidMimeType,
 }
 
-impl ResponseError for StorageError {
-    fn status_code(&self) -> actix_web::http::StatusCode {
-        match self {
-            StorageError::Io(_) => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
-            StorageError::Multipart(_)
-            | StorageError::MultipartFieldMissing(_)
-            | StorageError::InvalidMimeType => actix_web::http::StatusCode::BAD_REQUEST,
-        }
-    }
-
-    fn error_response(&self) -> HttpResponse {
-        match self {
-            StorageError::Io(_) => HttpResponse::build(self.status_code()).json(json!({
-                "error": "Internal server error",
-            })),
-            StorageError::Multipart(_)
-            | StorageError::MultipartFieldMissing(_)
-            | StorageError::InvalidMimeType => {
-                HttpResponse::build(self.status_code()).json(json!({
-                    "error": "Bad request",
-                }))
-            }
-        }
-    }
-}
-
-#[async_trait(?Send)]
-pub trait Storage {
-    async fn save_image(&self, multipart: Multipart) -> Result<String, StorageError>;
-    async fn delete_image(&self, filename: &str) -> Result<(), StorageError>;
-}
-
 #[derive(Clone)]
-pub struct StorageImpl;
+pub struct Storage;
 
-impl StorageImpl {
+impl Storage {
     pub fn new() -> Self {
-        StorageImpl
+        Storage
     }
-}
 
-#[async_trait(?Send)]
-impl Storage for StorageImpl {
-    async fn save_image(&self, mut multipart: Multipart) -> Result<String, StorageError> {
+    pub async fn save_image(&self, mut multipart: Multipart) -> Result<String, StorageError> {
         let field_name = "payload".to_string();
 
         while let Some(Ok(mut field)) = multipart.next().await {
@@ -95,7 +57,7 @@ impl Storage for StorageImpl {
         Err(StorageError::MultipartFieldMissing(field_name))
     }
 
-    async fn delete_image(&self, filename: &str) -> Result<(), StorageError> {
+    pub async fn delete_image(&self, filename: &str) -> Result<(), StorageError> {
         let file_path = format!("./assets/{}", filename);
         std::fs::remove_file(file_path)?;
 

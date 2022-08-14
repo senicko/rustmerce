@@ -126,15 +126,16 @@ impl ProductRepo {
         &self,
         product_id: i32,
         asset_filename: &String,
-    ) -> Result<(), ProductRepoError> {
+    ) -> Result<Asset, ProductRepoError> {
         let conn = self.db_pool.get().await?;
 
-        conn.execute(
-            "INSERT INTO assets (product_id, filename) VALUES ($1, $2)",
-            &[&product_id, &asset_filename],
-        )
-        .await?;
+        let row = conn
+            .query_one(
+                "INSERT INTO assets (product_id, filename) VALUES ($1, $2) RETURNING *",
+                &[&product_id, &asset_filename],
+            )
+            .await?;
 
-        Ok(())
+        Ok(Asset::from_row(row)?)
     }
 }

@@ -35,4 +35,16 @@ impl ProductService {
     pub async fn delete(&self, id: i32) -> Result<(), ProductServiceError> {
         Ok(self.product_repo.delete_by_id(id).await?)
     }
+
+    pub async fn add_asset(
+        &self,
+        product_id: i32,
+        asset_filename: &String,
+    ) -> Result<(), ProductServiceError> {
+        self.product_repo
+            .add_asset(product_id, asset_filename)
+            .await?;
+
+        Ok(())
+    }
 }

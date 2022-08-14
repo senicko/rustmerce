@@ -1,4 +1,8 @@
-use crate::product::{service::ProductService, ProductInsertable};
+use crate::{
+    product::{service::ProductService, ProductInsertable},
+    storage::Storage,
+};
+use actix_multipart::Multipart;
 use actix_web::{web, HttpResponse, ResponseError};
 use anyhow::Context;
 
@@ -66,15 +70,33 @@ async fn delete_product(
     Ok(HttpResponse::Ok().finish())
 }
 
-// async fn add_product_asset(
-//     id: web::Path<i32>,
-//     multipart: Multipart,
-//     storage_service: web::Data<StorageImpl>,
-// ) -> Result<HttpResponse, StorageError> {
-//     storage_service.save_image(multipart).await?;
+async fn add_product_asset(
+    id: web::Path<i32>,
+    multipart: Multipart,
+    storage: web::Data<Storage>,
+    product_service: web::Data<ProductService>,
+) -> Result<HttpResponse, ProductApiError> {
+    let asset_filename = storage
+        .save_image(multipart)
+        .await
+        .context("Failed to save image")?;
 
-//     Ok(HttpResponse::Ok().finish())
-// }
+    match product_service
+        .add_asset(id.to_owned(), &asset_filename)
+        .await
+        .context("Failed to add asset")
+    {
+        Ok(asset) => Ok(HttpResponse::Created().json(asset)),
+        Err(e) => {
+            storage
+                .delete_image(&asset_filename)
+                .await
+                .expect("Failed to remove the file");
+
+            Err(ProductApiError::Internal(e))
+        }
+    }
+}
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -85,11 +107,13 @@ pub fn config(cfg: &mut web::ServiceConfig) {
                     .route(web::post().to(create_product)),
             )
             .service(
-                web::scope("{id}").service(
-                    web::resource("")
-                        .route(web::get().to(get_product))
-                        .route(web::delete().to(delete_product)),
-                ), // .route("/assets", web::post().to(add_product_asset)),
+                web::scope("{id}")
+                    .service(
+                        web::resource("")
+                            .route(web::get().to(get_product))
+                            .route(web::delete().to(delete_product)),
+                    )
+                    .route("/assets", web::post().to(add_product_asset)),
             ),
     );
 }

@@ -36,9 +36,9 @@ async fn main() -> std::io::Result<()> {
 
     std::fs::create_dir_all("./assets").expect("Failed to create ./assets");
 
-    let storage_service = storage::StorageImpl;
-
     let db_pool = init_db_pool();
+
+    let storage_service = storage::Storage::new();
     let product_repo = product::repo::ProductRepo::new(db_pool);
     let product_service = product::service::ProductService::new(product_repo);
 
