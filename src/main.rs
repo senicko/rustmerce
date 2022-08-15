@@ -39,15 +39,14 @@ async fn main() -> std::io::Result<()> {
     let db_pool = init_db_pool();
 
     let storage_service = storage::Storage::new();
-    let product_repo = product::repo::ProductRepo::new(db_pool);
-    let product_service = product::service::ProductService::new(product_repo);
+    let product_store = product::store::ProductStore::new(db_pool);
 
     HttpServer::new(move || {
         let logger = Logger::default();
 
         App::new()
             .wrap(logger)
-            .app_data(web::Data::new(product_service.clone()))
+            .app_data(web::Data::new(product_store.clone()))
             .app_data(web::Data::new(storage_service.clone()))
             .service(actix_files::Files::new("/assets", "./assets").show_files_listing())
             .configure(product::handlers::config)

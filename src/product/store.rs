@@ -4,7 +4,7 @@ use futures::{stream::FuturesUnordered, TryStreamExt};
 use tokio_pg_mapper::FromTokioPostgresRow;
 
 #[derive(thiserror::Error, Debug)]
-pub enum ProductRepoError {
+pub enum ProductStoreError {
     #[error("Database query failed")]
     QueryFailed(#[from] tokio_postgres::Error),
 
@@ -16,31 +16,31 @@ pub enum ProductRepoError {
 }
 
 #[derive(Clone)]
-pub struct ProductRepo {
+pub struct ProductStore {
     db_pool: Pool,
 }
 
-impl ProductRepo {
+impl ProductStore {
     pub fn new(db_pool: Pool) -> Self {
-        ProductRepo { db_pool }
+        Self { db_pool }
     }
 
     async fn get_product_assets<'a>(
         &self,
         product_id: i32,
         transaction: &Transaction<'a>,
-    ) -> Result<Vec<Asset>, ProductRepoError> {
+    ) -> Result<Vec<Asset>, ProductStoreError> {
         let assets_rows = transaction
             .query("SELECT * FROM assets WHERE product_id = $1", &[&product_id])
             .await?;
 
         assets_rows
             .iter()
-            .map(|row| Asset::from_row_ref(row).map_err(|e| ProductRepoError::MappingFailed(e)))
+            .map(|row| Asset::from_row_ref(row).map_err(|e| ProductStoreError::MappingFailed(e)))
             .collect()
     }
 
-    pub async fn get_all(&self) -> Result<Vec<Product>, ProductRepoError> {
+    pub async fn get_all(&self) -> Result<Vec<Product>, ProductStoreError> {
         let mut conn = self.db_pool.get().await?;
         let transaction = conn.transaction().await?;
 
@@ -53,7 +53,7 @@ impl ProductRepo {
                 .map(|row| async move {
                     let mut product = Product::try_from(row)?;
                     product.assets = self.get_product_assets(product.id, transaction_ref).await?;
-                    Ok::<_, ProductRepoError>(product)
+                    Ok::<_, ProductStoreError>(product)
                 })
                 .collect::<FuturesUnordered<_>>()
                 .try_collect()
@@ -70,7 +70,7 @@ impl ProductRepo {
         result
     }
 
-    pub async fn get_by_id(&self, id: i32) -> Result<Option<Product>, ProductRepoError> {
+    pub async fn get_one(&self, id: i32) -> Result<Option<Product>, ProductStoreError> {
         let mut conn = self.db_pool.get().await?;
         let transaction = conn.transaction().await?;
 
@@ -100,7 +100,7 @@ impl ProductRepo {
         result
     }
 
-    pub async fn insert(&self, product: ProductInsertable) -> Result<Product, ProductRepoError> {
+    pub async fn insert(&self, product: ProductInsertable) -> Result<Product, ProductStoreError> {
         let conn = self.db_pool.get().await?;
 
         let row = conn
@@ -113,7 +113,7 @@ impl ProductRepo {
         Ok(Product::try_from(&row)?)
     }
 
-    pub async fn delete_by_id(&self, id: i32) -> Result<(), ProductRepoError> {
+    pub async fn delete(&self, id: i32) -> Result<(), ProductStoreError> {
         let conn = self.db_pool.get().await?;
 
         conn.execute("DELETE FROM products WHERE id = $1", &[&id])
@@ -126,7 +126,7 @@ impl ProductRepo {
         &self,
         product_id: i32,
         asset_filename: &String,
-    ) -> Result<Asset, ProductRepoError> {
+    ) -> Result<Asset, ProductStoreError> {
         let conn = self.db_pool.get().await?;
 
         let row = conn

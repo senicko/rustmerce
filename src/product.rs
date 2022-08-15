@@ -1,10 +1,10 @@
 use serde::{Deserialize, Serialize};
 use tokio_pg_mapper_derive::PostgresMapper;
 use tokio_postgres::Row;
+use validator::Validate;
 
 pub mod handlers;
-pub mod repo;
-pub mod service;
+pub mod store;
 
 #[derive(Serialize, Deserialize, PostgresMapper)]
 #[pg_mapper(table = "assets")]
@@ -34,8 +34,11 @@ impl TryFrom<&Row> for Product {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct ProductInsertable {
+    #[validate(length(min = 1))]
     pub name: String,
+
+    #[validate(range(min = 1))]
     pub price: f64,
 }
