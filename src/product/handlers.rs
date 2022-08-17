@@ -1,6 +1,6 @@
 use crate::{product::ProductInsertable, storage::Storage};
 use actix_multipart::Multipart;
-use actix_web::{http::StatusCode, web, HttpResponse, ResponseError};
+use actix_web::{http::StatusCode, web, HttpRequest, HttpResponse, ResponseError};
 use anyhow::Context;
 use serde_json::json;
 use validator::Validate;
@@ -9,6 +9,9 @@ use super::store::ProductStore;
 
 #[derive(thiserror::Error, Debug)]
 enum ProductApiError {
+    #[error("Bad request")]
+    BadRequest(String),
+
     #[error("Validation failed")]
     ValidationError(#[from] validator::ValidationErrors),
 
@@ -19,7 +22,7 @@ enum ProductApiError {
 impl ResponseError for ProductApiError {
     fn status_code(&self) -> actix_web::http::StatusCode {
         match self {
-            Self::ValidationError(_) => StatusCode::BAD_REQUEST,
+            Self::ValidationError(_) | Self::BadRequest(_) => StatusCode::BAD_REQUEST,
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -31,6 +34,7 @@ impl ResponseError for ProductApiError {
             Self::ValidationError(e) => response.json(json!({
                 "validation": e.errors()
             })),
+            Self::BadRequest(e) => response.json(json!({ "error": e })),
             Self::Internal(_) => response.body("Internal Server Error"),
         }
     }
@@ -89,11 +93,35 @@ async fn delete_product(
 }
 
 async fn add_product_asset(
+    req: HttpRequest,
     id: web::Path<i32>,
     multipart: Multipart,
     storage: web::Data<Storage>,
     product_store: web::Data<ProductStore>,
 ) -> Result<HttpResponse, ProductApiError> {
+    // check if content_length isn't too large
+
+    if let Some(conent_length) = req.headers().get("content-length") {
+        if conent_length
+            .to_str()
+            .context("Failed to parse content-length to str")?
+            .parse::<u64>()
+            .context("Failed to parse content-length to u64")?
+            // 2 MB
+            > 1024 * 1024 * 2
+        {
+            return Err(ProductApiError::BadRequest(
+                "File can't be bigger than 1MB".to_string(),
+            ));
+        }
+    } else {
+        return Err(ProductApiError::BadRequest(
+            "Missing content-length header".to_string(),
+        ));
+    }
+
+    // save uploaded file
+
     let asset_filename = storage
         .save_image(multipart)
         .await
