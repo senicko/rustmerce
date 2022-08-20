@@ -31,11 +31,11 @@ impl ResponseError for ProductApiError {
         let mut response = HttpResponse::build(self.status_code());
 
         match self {
-            Self::ValidationError(e) => response.json(json!({
-                "validation": e.errors()
-            })),
-            Self::BadRequest(e) => response.json(json!({ "error": e })),
-            Self::Internal(_) => response.body("Internal Server Error"),
+            Self::ValidationError(e) => {
+                response.json(json!({"message": "Validation failed", "errors": e.errors()}))
+            }
+            Self::BadRequest(_) => response.json(json!({ "message": "Bad request" })),
+            Self::Internal(_) => response.json(json!({ "message": "Internal server error" })),
         }
     }
 }
