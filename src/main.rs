@@ -1,3 +1,4 @@
+use actix_cors::Cors;
 use actix_web::{middleware::Logger, web, App, HttpServer};
 use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime};
 use dotenv::dotenv;
@@ -37,14 +38,17 @@ async fn main() -> std::io::Result<()> {
     std::fs::create_dir_all("./assets").expect("Failed to create ./assets");
 
     let db_pool = init_db_pool();
-
     let storage_service = storage::Storage::new();
     let product_store = product::store::ProductStore::new(db_pool);
 
     HttpServer::new(move || {
         let logger = Logger::default();
 
+        let cors =
+            Cors::default().allowed_origin(env::var("CORS_ALLOWED_ORIGIN").unwrap().as_str());
+
         App::new()
+            .wrap(cors)
             .wrap(logger)
             .app_data(web::Data::new(product_store.clone()))
             .app_data(web::Data::new(storage_service.clone()))
