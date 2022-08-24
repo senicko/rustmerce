@@ -53,16 +53,6 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .wrap(cors)
             .wrap(logger)
-            .wrap_fn(|req, srv| {
-                println!("Hi from start. You requested: {}", req.path());
-                srv.call(req).map(|res| {
-                    if let Ok(r) = &res {
-                        println!("{:?}", r.headers())
-                    }
-
-                    res
-                })
-            })
             .app_data(web::Data::new(product_store.clone()))
             .app_data(web::Data::new(storage_service.clone()))
             .service(actix_files::Files::new("/assets", "./assets").show_files_listing())
