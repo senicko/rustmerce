@@ -44,8 +44,9 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         let logger = Logger::default();
 
-        let cors =
-            Cors::default().allowed_origin(env::var("CORS_ALLOWED_ORIGIN").unwrap().as_str());
+        let cors = Cors::default()
+            .allowed_origin("http://localhost:3000")
+            .allowed_methods(vec!["GET", "POST", "PUT", "DELETE"]);
 
         App::new()
             .wrap(cors)
