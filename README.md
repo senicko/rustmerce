@@ -9,8 +9,3 @@ Database
 DB_USERNAME
 DB_NAME
 ```
-
-CORS
-```
-CORS_ALLOWED_ORIGIN
-```
