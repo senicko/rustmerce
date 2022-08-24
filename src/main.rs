@@ -1,7 +1,8 @@
 use actix_cors::Cors;
-use actix_web::{middleware::Logger, web, App, HttpServer};
+use actix_web::{dev::Service, middleware::Logger, web, App, HttpServer};
 use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime};
 use dotenv::dotenv;
+use futures::FutureExt;
 use std::env;
 use tokio_postgres::NoTls;
 
@@ -45,12 +46,23 @@ async fn main() -> std::io::Result<()> {
         let logger = Logger::default();
 
         let cors = Cors::default()
-            .allowed_origin("http://localhost:3000")
-            .allowed_methods(vec!["GET", "POST", "PUT", "DELETE"]);
+            .allow_any_origin()
+            .allow_any_method()
+            .allow_any_header();
 
         App::new()
             .wrap(cors)
             .wrap(logger)
+            .wrap_fn(|req, srv| {
+                println!("Hi from start. You requested: {}", req.path());
+                srv.call(req).map(|res| {
+                    if let Ok(r) = &res {
+                        println!("{:?}", r.headers())
+                    }
+
+                    res
+                })
+            })
             .app_data(web::Data::new(product_store.clone()))
             .app_data(web::Data::new(storage_service.clone()))
             .service(actix_files::Files::new("/assets", "./assets").show_files_listing())
