@@ -1,4 +1,3 @@
-use crate::{product::ProductInsertable, storage::Storage};
 use actix_multipart::Multipart;
 use actix_web::{http::StatusCode, web, HttpRequest, HttpResponse, ResponseError};
 use anyhow::Context;
@@ -6,6 +5,7 @@ use serde_json::json;
 use validator::Validate;
 
 use super::store::ProductStore;
+use crate::{product::ProductInsertable, storage::Storage};
 
 #[derive(thiserror::Error, Debug)]
 enum ProductApiError {
