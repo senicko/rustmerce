@@ -62,7 +62,9 @@ async fn get_product(
 
     match product {
         Some(p) => Ok(HttpResponse::Ok().json(p)),
-        None => Ok(HttpResponse::NotFound().finish()),
+        None => Ok(HttpResponse::NotFound().json(json!({
+            "message": "Product not found"
+        }))),
     }
 }
 

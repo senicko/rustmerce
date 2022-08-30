@@ -48,7 +48,9 @@ async fn get_category(
 
     match category {
         Some(category) => Ok(HttpResponse::Ok().json(category)),
-        None => Ok(HttpResponse::NotFound().finish()),
+        None => Ok(HttpResponse::NotFound().json(json!({
+            "message": "Category not found"
+        }))),
     }
 }
 
