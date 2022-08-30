@@ -26,11 +26,11 @@ CREATE TABLE categories (
 
 -- util procedures
 
--- get_category_tree returns id of the category and ids of all deeply nested sub-categories
-CREATE FUNCTION get_category_tree(category_id int) RETURNS TABLE(id int) 
+-- get_subcategories returns all categories lower in hierarchy than the specified category.
+CREATE FUNCTION get_subcategories(category_id int) RETURNS TABLE(id int) 
 AS $$
     WITH RECURSIVE parent_category AS (
-        SELECT id FROM categories WHERE id = $1
+        SELECT id FROM categories WHERE parent_id = $1
         UNION ALL
         SELECT c.id  FROM categories AS c, parent_category AS pc WHERE c.parent_id = pc.id
     ) SELECT * FROM parent_category;

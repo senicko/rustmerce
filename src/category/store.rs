@@ -12,6 +12,9 @@ pub enum CategoryStoreError {
 
     #[error("Database connection failed")]
     ConnectionFailed(#[from] deadpool_postgres::PoolError),
+
+    #[error("Not Found")]
+    NotFound(#[from] anyhow::Error),
 }
 
 #[derive(Clone)]
@@ -54,23 +57,31 @@ impl CategoryStore {
         Ok(self.group_categories(None, all_categories))
     }
 
-    // WIP
-    // pub async fn get_one(&self, id: i32) -> Result<Category, CategoryStoreError> {
-    //     let conn = self.db_pool.get().await?;
+    pub async fn get_one(&self, id: i32) -> Result<Option<Category>, CategoryStoreError> {
+        let conn = self.db_pool.get().await?;
 
-    //     let rows = conn
-    //         .query(
-    //             "SELECT c.* FROM categories as c, get_category_tree(1) as t WHERE c.id IN (t)",
-    //             &[&id],
-    //         )
-    //         .await?;
+        let category_row = conn
+            .query_opt("SELECT * FROM categories WHERE id = $1", &[&id])
+            .await?;
 
-    //     let category =
-    //         Category::try_from(rows.get(0).ok_or(CategoryStoreError::MappingFailed(()))?)?;
+        if let Some(row) = category_row {
+            let mut category = Category::try_from(&row)?;
 
-    //     let mut category = Category::try_from(row)?;
-    //     category.children = self.group_categories(id).await?;
+            let children_rows = conn
+                .query(
+                    "SELECT c.* FROM categories as c, get_subcategories($1) as sc WHERE c.id IN (sc)",
+                    &[&id],
+                )
+                .await?;
 
-    //     Ok(category)
-    // }
+            category.children = children_rows
+                .iter()
+                .map(|row| Ok(Category::try_from(row)?))
+                .collect::<Result<Vec<Category>, CategoryStoreError>>()?;
+
+            Ok(Some(category))
+        } else {
+            Ok(None)
+        }
+    }
 }

@@ -4,7 +4,6 @@ use serde_json::json;
 
 use super::store::CategoryStore;
 
-// TODO: This can be somehow be generalized. Product handlers have Internal error too.
 #[derive(thiserror::Error, Debug)]
 pub enum CategoryApiError {
     #[error(transparent)]
@@ -38,6 +37,25 @@ async fn list_categories(
     Ok(HttpResponse::Ok().json(categories))
 }
 
+async fn get_category(
+    id: web::Path<i32>,
+    category_store: web::Data<CategoryStore>,
+) -> Result<HttpResponse, CategoryApiError> {
+    let category = category_store
+        .get_one(id.into_inner())
+        .await
+        .context("Failed to get category")?;
+
+    match category {
+        Some(category) => Ok(HttpResponse::Ok().json(category)),
+        None => Ok(HttpResponse::NotFound().finish()),
+    }
+}
+
 pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.service(web::scope("/categories").route("", web::get().to(list_categories)));
+    cfg.service(
+        web::scope("/categories")
+            .route("", web::get().to(list_categories))
+            .route("{id}", web::get().to(get_category)),
+    );
 }
