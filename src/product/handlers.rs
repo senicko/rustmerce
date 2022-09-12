@@ -94,6 +94,19 @@ async fn delete_product(
     Ok(HttpResponse::Ok().finish())
 }
 
+async fn update_product(
+    id: web::Path<i32>,
+    data: web::Json<ProductInsertable>,
+    product_store: web::Data<ProductStore>,
+) -> Result<HttpResponse, ProductApiError> {
+    product_store
+        .update(id.into_inner(), data.into_inner())
+        .await
+        .context("Failed to update product")?;
+
+    Ok(HttpResponse::Ok().finish())
+}
+
 async fn add_product_asset(
     req: HttpRequest,
     id: web::Path<i32>,
@@ -159,6 +172,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
                     .service(
                         web::resource("")
                             .route(web::get().to(get_product))
+                            .route(web::put().to(update_product))
                             .route(web::delete().to(delete_product)),
                     )
                     .route("/assets", web::post().to(add_product_asset)),

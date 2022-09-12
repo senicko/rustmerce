@@ -113,6 +113,22 @@ impl ProductStore {
         Ok(Product::try_from(&row)?)
     }
 
+    pub async fn update(
+        &self,
+        id: i32,
+        product: ProductInsertable,
+    ) -> Result<(), ProductStoreError> {
+        let conn = self.db_pool.get().await?;
+
+        conn.execute(
+            "UPDATE products SET name = $1, price = $2 WHERE id = $3 RETURNING *",
+            &[&product.name, &product.price, &id],
+        )
+        .await?;
+
+        Ok(())
+    }
+
     pub async fn delete(&self, id: i32) -> Result<(), ProductStoreError> {
         let conn = self.db_pool.get().await?;
 
