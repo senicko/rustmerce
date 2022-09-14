@@ -5,8 +5,9 @@ CREATE DATABASE rustmerce;
 CREATE TABLE products (
     id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,
-    price FLOAT NOT NULL
+    price FLOAT NOT NULL,
     category_id INT,
+    status TEXT NOT NULL DEFAULT 'Draft',
     CONSTRAINT fk_category FOREIGN KEY (category_id) REFERENCES categories(id)
 );
 

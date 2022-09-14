@@ -14,10 +14,17 @@ pub struct Asset {
 }
 
 #[derive(Serialize, Deserialize)]
+pub enum ProductStatus {
+    Published,
+    Draft,
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct Product {
     pub id: i32,
     pub name: String,
     pub price: f64,
+    pub status: ProductStatus,
     pub assets: Vec<Asset>,
 }
 
@@ -25,10 +32,18 @@ impl TryFrom<&Row> for Product {
     type Error = tokio_pg_mapper::Error;
 
     fn try_from(row: &Row) -> Result<Self, Self::Error> {
+        let status: &str = row.try_get("status")?;
+
         Ok(Product {
             id: row.try_get("id")?,
             name: row.try_get("name")?,
             price: row.try_get("price")?,
+            status: {
+                match status {
+                    "Draft" => ProductStatus::Draft,
+                    _ => ProductStatus::Published,
+                }
+            },
             assets: Vec::new(),
         })
     }
