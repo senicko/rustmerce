@@ -2,36 +2,22 @@ use actix_cors::Cors;
 use actix_web::{middleware::Logger, web, App, HttpServer};
 use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime};
 use dotenv::dotenv;
-use redis::Commands;
 use std::env;
+use std::sync::{Arc, Mutex};
 use tokio_postgres::NoTls;
-
-extern crate redis;
 
 mod category;
 mod product;
 mod storage;
 
-fn init_redis_connection() -> redis::Connection {
-    let client = redis::Client::open("redis://127.0.0.1/").expect("Invalid redis connection url");
+async fn init_redis_connection() -> redis::aio::Connection {
+    let client =
+        redis::Client::open("redis://127.0.0.1:6379/").expect("Invalid redis connection url");
 
     client
-        .get_connection()
+        .get_async_connection()
+        .await
         .expect("Failed to connect with redis")
-}
-
-fn test_redis() {
-    let mut redis_conn = init_redis_connection();
-
-    // throw away the result, just make sure it does not fail
-    let _: () = redis_conn.set("my_key", 42).unwrap();
-
-    // read back the key and return it.  Because the return value
-    // from the function is a result for integer this will automatically
-    // convert into one.
-    let value: i32 = redis_conn.get("my_key").unwrap();
-
-    println!("{value}");
 }
 
 fn init_db_pool() -> Pool {
@@ -65,7 +51,8 @@ async fn main() -> std::io::Result<()> {
 
     let db_pool = init_db_pool();
 
-    test_redis();
+    let redis_conn = Arc::new(Mutex::new(init_redis_connection().await));
+    // let product_cache = product::cache::ProductCache::new(&mut redis_conn);
 
     let product_store = product::store::ProductStore::new(db_pool.clone());
     let category_store = category::store::CategoryStore::new(db_pool.clone());
@@ -86,6 +73,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(product_store.clone()))
             .app_data(web::Data::new(storage_service.clone()))
             .app_data(web::Data::new(category_store.clone()))
+            .app_data(web::Data::new(redis_conn.clone()))
             .service(actix_files::Files::new("/assets", "./assets").show_files_listing())
             .configure(product::handlers::config)
             .configure(category::handlers::config)

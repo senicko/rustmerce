@@ -1,7 +1,14 @@
 use actix_multipart::Multipart;
-use actix_web::{http::StatusCode, web, HttpRequest, HttpResponse, ResponseError};
+use actix_web::{
+    http::{header::ContentType, StatusCode},
+    web, HttpRequest, HttpResponse, ResponseError,
+};
 use anyhow::Context;
 use serde_json::json;
+use std::{
+    ops::DerefMut,
+    sync::{Arc, Mutex},
+};
 use validator::Validate;
 
 use super::store::ProductStore;
@@ -54,17 +61,48 @@ async fn list_products(
 async fn get_product(
     id: web::Path<i32>,
     product_store: web::Data<ProductStore>,
+    redis_conn: web::Data<Arc<Mutex<redis::aio::Connection>>>,
 ) -> Result<HttpResponse, ProductApiError> {
-    let product = product_store
-        .get_one(id.into_inner())
-        .await
-        .context("Failed to get product")?;
+    let mut redis_conn = redis_conn.lock().unwrap();
 
-    match product {
-        Some(p) => Ok(HttpResponse::Ok().json(p)),
-        None => Ok(HttpResponse::NotFound().json(json!({
-            "message": "Product not found"
-        }))),
+    let result: Result<String, _> = redis::cmd("JSON.GET")
+        .arg(format!("product:{}", id))
+        .query_async(redis_conn.deref_mut())
+        .await;
+
+    match result {
+        Ok(v) => Ok(HttpResponse::Ok().content_type(ContentType::json()).body(v)),
+        Err(_) => {
+            let product = product_store
+                .get_one(id.into_inner())
+                .await
+                .context("Failed to get product")?;
+
+            match product {
+                Some(p) => {
+                    let serialized_product = serde_json::to_string(&p).unwrap();
+
+                    let e: Result<(), _> = redis::pipe()
+                        .cmd("JSON.SET")
+                        .arg(&[&format!("product:{}", p.id), "$", &serialized_product])
+                        .ignore()
+                        .cmd("expire")
+                        .arg(&[&format!("product:{}", p.id), "5"])
+                        .ignore()
+                        .query_async(redis_conn.deref_mut())
+                        .await;
+
+                    if let Err(e) = e {
+                        println!("Error has occured: {}", e);
+                    }
+
+                    Ok(HttpResponse::Ok().json(p))
+                }
+                None => Ok(HttpResponse::NotFound().json(json!({
+                    "message": "Product not found"
+                }))),
+            }
+        }
     }
 }
 

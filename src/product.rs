@@ -3,6 +3,7 @@ use tokio_pg_mapper_derive::PostgresMapper;
 use tokio_postgres::Row;
 use validator::Validate;
 
+pub mod cache;
 pub mod handlers;
 pub mod store;
 
@@ -57,3 +58,57 @@ pub struct ProductInsertable {
     #[validate(range(min = 1))]
     pub price: f64,
 }
+
+// #[derive(Message)]
+// #[rtype(result = "Responses")]
+// pub enum Messages {
+//     Ping,
+//     Pong,
+// }
+
+// #[derive(Debug)]
+// pub enum Responses {
+//     GotPing,
+//     GotPong,
+// }
+
+// impl<A, M> MessageResponse<A, M> for Responses
+// where
+//     A: Actor,
+//     M: Message<Result = Responses>,
+// {
+//     fn handle(self, ctx: &mut A::Context, tx: Option<actix::dev::OneshotSender<M::Result>>) {
+//         if let Some(tx) = tx {
+//             tx.send(self);
+//         }
+//     }
+// }
+
+// #[derive(Message)]
+// #[rtype(result = "Result<bool, std::io::Error>")]
+// pub struct Ping;
+
+// pub struct ProductActor;
+
+// impl Actor for ProductActor {
+//     type Context = Context<Self>;
+
+//     fn started(&mut self, ctx: &mut Context<Self>) {
+//         println!("Actor is alive")
+//     }
+
+//     fn stopped(&mut self, ctx: &mut Context<Self>) {
+//         println!("Actor is stopped")
+//     }
+// }
+
+// impl Handler<Messages> for ProductActor {
+//     type Result = Responses;
+
+//     fn handle(&mut self, msg: Messages, ctx: &mut Context<Self>) -> Self::Result {
+//         match msg {
+//             Messages::Ping => Responses::GotPing,
+//             Messages::Pong => Responses::GotPong,
+//         }
+//     }
+// }
