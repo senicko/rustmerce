@@ -2,6 +2,7 @@ use actix_cors::Cors;
 use actix_web::{middleware::Logger, web, App, HttpServer};
 use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime};
 use dotenv::dotenv;
+use product::cache::Cache;
 use std::env;
 use std::sync::{Arc, Mutex};
 use tokio_postgres::NoTls;
@@ -51,12 +52,10 @@ async fn main() -> std::io::Result<()> {
 
     let db_pool = init_db_pool();
 
-    let redis_conn = Arc::new(Mutex::new(init_redis_connection().await));
-    // let product_cache = product::cache::ProductCache::new(&mut redis_conn);
-
     let product_store = product::store::ProductStore::new(db_pool.clone());
     let category_store = category::store::CategoryStore::new(db_pool.clone());
 
+    let cache = Cache::new(init_redis_connection().await);
     let storage_service = storage::Storage::new();
 
     HttpServer::new(move || {
@@ -73,7 +72,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(product_store.clone()))
             .app_data(web::Data::new(storage_service.clone()))
             .app_data(web::Data::new(category_store.clone()))
-            .app_data(web::Data::new(redis_conn.clone()))
+            .app_data(web::Data::new(cache.clone()))
             .service(actix_files::Files::new("/assets", "./assets").show_files_listing())
             .configure(product::handlers::config)
             .configure(category::handlers::config)

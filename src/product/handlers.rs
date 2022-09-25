@@ -5,13 +5,9 @@ use actix_web::{
 };
 use anyhow::Context;
 use serde_json::json;
-use std::{
-    ops::DerefMut,
-    sync::{Arc, Mutex},
-};
 use validator::Validate;
 
-use super::store::ProductStore;
+use super::{cache::Cache, store::ProductStore};
 use crate::{product::ProductInsertable, storage::Storage};
 
 #[derive(thiserror::Error, Debug)]
@@ -48,31 +44,49 @@ impl ResponseError for ProductApiError {
 }
 
 async fn list_products(
+    req: HttpRequest,
     product_store: web::Data<ProductStore>,
+    cache: web::Data<Cache>,
 ) -> Result<HttpResponse, ProductApiError> {
-    let products = product_store
-        .get_all()
+    let cached = cache
+        .get(req.path())
         .await
-        .context("Failed to get products")?;
+        .context("Failed to retrieve cached products")?;
 
-    Ok(HttpResponse::Ok().json(products))
+    match cached {
+        Some(v) => Ok(HttpResponse::Ok().content_type(ContentType::json()).body(v)),
+        None => {
+            let products = product_store
+                .get_all()
+                .await
+                .context("Failed to get products")?;
+
+            let serialized_products = serde_json::to_string(&products).unwrap();
+
+            cache
+                .set(req.path(), &serialized_products)
+                .await
+                .context("Failed to cache the products")?;
+
+            Ok(HttpResponse::Ok().json(products))
+        }
+    }
 }
 
 async fn get_product(
+    req: HttpRequest,
     id: web::Path<i32>,
     product_store: web::Data<ProductStore>,
-    redis_conn: web::Data<Arc<Mutex<redis::aio::Connection>>>,
+    cache: web::Data<Cache>,
 ) -> Result<HttpResponse, ProductApiError> {
-    let mut redis_conn = redis_conn.lock().unwrap();
+    let cached = cache
+        .get(req.path())
+        .await
+        .context("Failed to retrieve the product from cache")?;
 
-    let result: Result<String, _> = redis::cmd("JSON.GET")
-        .arg(format!("product:{}", id))
-        .query_async(redis_conn.deref_mut())
-        .await;
-
-    match result {
-        Ok(v) => Ok(HttpResponse::Ok().content_type(ContentType::json()).body(v)),
-        Err(_) => {
+    match cached {
+        Some(v) => Ok(HttpResponse::Ok().content_type(ContentType::json()).body(v)),
+        None => {
             let product = product_store
                 .get_one(id.into_inner())
                 .await
@@ -82,19 +96,10 @@ async fn get_product(
                 Some(p) => {
                     let serialized_product = serde_json::to_string(&p).unwrap();
 
-                    let e: Result<(), _> = redis::pipe()
-                        .cmd("JSON.SET")
-                        .arg(&[&format!("product:{}", p.id), "$", &serialized_product])
-                        .ignore()
-                        .cmd("expire")
-                        .arg(&[&format!("product:{}", p.id), "5"])
-                        .ignore()
-                        .query_async(redis_conn.deref_mut())
-                        .await;
-
-                    if let Err(e) = e {
-                        println!("Error has occured: {}", e);
-                    }
+                    cache
+                        .set(req.path(), &serialized_product)
+                        .await
+                        .context("Failed to cache the product")?;
 
                     Ok(HttpResponse::Ok().json(p))
                 }
